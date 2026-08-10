@@ -68,9 +68,13 @@ public class SessionService {
     }
 
     public SessionValidationResult validateSession(String userId, String sessionId) {
+        return validateAndRefreshSession(userId, sessionId);
+    }
+
+    public SessionValidationResult validateAndRefreshSession(String userId, String sessionId) {
         try {
             if (userId == null || sessionId == null) {
-                log.warn("validateSession called with null parameters: userId={}, sessionId={}", userId, sessionId);
+                log.warn("validateAndRefreshSession called with null parameters: userId={}, sessionId={}", userId, sessionId);
                 return SessionValidationResult.invalid("INVALID_PARAMETERS", "유효하지 않은 세션 파라미터");
             }
 

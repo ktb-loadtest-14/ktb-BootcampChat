@@ -124,6 +124,28 @@ class SessionServiceUnitTest {
     }
 
     @Test
+    @DisplayName("세션 검증은 활동시간 갱신까지 한 번에 처리한다")
+    void validateAndRefreshSession_UpdatesLastActivityInSingleSave() {
+        long initialLastActivity = Instant.now().minusSeconds(30).toEpochMilli();
+        Session session = Session.builder()
+                .userId(USER_ID)
+                .sessionId(SESSION_ID)
+                .createdAt(initialLastActivity)
+                .lastActivity(initialLastActivity)
+                .expiresAt(Instant.now().plusSeconds(30))
+                .build();
+        when(sessionStore.findByUserId(USER_ID)).thenReturn(Optional.of(session));
+        when(sessionStore.save(any(Session.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SessionValidationResult result = sessionService.validateAndRefreshSession(USER_ID, SESSION_ID);
+
+        assertThat(result.isValid()).isTrue();
+        assertThat(result.getSession().getLastActivity()).isGreaterThan(initialLastActivity);
+        verify(sessionStore).findByUserId(USER_ID);
+        verify(sessionStore).save(any(Session.class));
+    }
+
+    @Test
     @DisplayName("활성 세션 조회 중 저장소 실패는 null로 반환된다")
     void getActiveSession_StoreFailure_ReturnsNull() {
         when(sessionStore.findByUserId(USER_ID)).thenThrow(new IllegalStateException("store down"));
