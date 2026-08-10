@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import ChatInput from '../ChatInput';
 
 describe('ChatInput', () => {
@@ -16,6 +16,33 @@ describe('ChatInput', () => {
 
     await waitFor(() => {
       expect(container.querySelector('em-emoji-picker')).toBeInTheDocument();
+    });
+  });
+
+  it('does not submit while Korean IME composition is active', () => {
+    const onSubmit = vi.fn();
+    const { getByTestId } = render(
+      <ChatInput
+        onSubmit={onSubmit}
+        fileInputRef={{ current: null }}
+        room={{ participants: [] }}
+      />
+    );
+    const input = getByTestId('chat-message-input');
+
+    fireEvent.change(input, { target: { value: '안녕하세요' } });
+    fireEvent.compositionStart(input);
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', keyCode: 229 });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: 'text',
+      content: '안녕하세요',
     });
   });
 });

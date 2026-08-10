@@ -24,6 +24,7 @@ const ChatInput = forwardRef(({
   const emojiButtonRef = useRef(null);
   const dropZoneRef = useRef(null);
   const internalInputRef = useRef(null);
+  const isComposingRef = useRef(false);
   const messageInputRef = ref || internalInputRef;
 
   const {
@@ -280,6 +281,17 @@ const ChatInput = forwardRef(({
   }, [insertMention, messageInputRef]);
 
   const handleKeyDown = useCallback((e) => {
+    const isComposing =
+      isComposingRef.current ||
+      e.isComposing ||
+      e.nativeEvent?.isComposing ||
+      e.keyCode === 229;
+
+    // 한글 등 IME 조합을 확정하는 Enter는 메시지 전송으로 처리하지 않는다.
+    if (isComposing) {
+      return;
+    }
+
     if (showMentionList) {
       const participants = getFilteredParticipants(room); // room 객체 전달
       const participantsCount = participants.length;
@@ -410,6 +422,12 @@ const ChatInput = forwardRef(({
                   value={message}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
+                  onCompositionStart={() => {
+                    isComposingRef.current = true;
+                  }}
+                  onCompositionEnd={() => {
+                    isComposingRef.current = false;
+                  }}
                   placeholder={isDragging ? "파일을 여기에 놓아주세요." : "메시지를 입력하세요... (@를 입력하여 멘션, Shift + Enter로 줄바꿈)"}
                   disabled={isDisabled}
                   rows={1}
