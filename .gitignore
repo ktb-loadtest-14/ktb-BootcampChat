@@ -1,4 +1,5 @@
 node_modules
+/.pnpm-store/
 
 # Backend
 apps/backend/.env
