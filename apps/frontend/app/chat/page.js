@@ -12,7 +12,7 @@ const LoadingState = () => (
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      height: '100vh',
+      height: '100%',
       backgroundColor: 'var(--vapor-color-background)',
       color: 'var(--vapor-color-text-primary)',
     }}
@@ -32,14 +32,23 @@ export default function ChatPage() {
     }
   }, [isAuthenticated, isLoading, pathname, router]);
 
-  if (isLoading || !isAuthenticated) {
-    return <LoadingState />;
-  }
-
   return (
-    <>
-      <ChatHeader />
-      <ChatRoomsView router={router} />
-    </>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        overflow: 'hidden',
+      }}
+    >
+      {(isLoading || isAuthenticated) && <ChatHeader />}
+      <main style={{ flex: '1 1 auto', minHeight: 0 }}>
+        {isLoading || !isAuthenticated ? (
+          <LoadingState />
+        ) : (
+          <ChatRoomsView router={router} />
+        )}
+      </main>
+    </div>
   );
 }

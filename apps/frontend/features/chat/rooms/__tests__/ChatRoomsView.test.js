@@ -7,6 +7,7 @@ import { CONNECTION_STATUS } from '../useServerConnection';
 const mocks = vi.hoisted(() => ({
   connectionStatus: 'checking',
   error: null,
+  loading: false,
   fetchRooms: vi.fn(() => Promise.resolve()),
   refreshRooms: vi.fn(() => Promise.resolve(true)),
   attemptConnection: vi.fn(() => Promise.resolve(true)),
@@ -44,7 +45,7 @@ vi.mock('../useRoomList', () => ({
     rooms: [],
     setRooms: vi.fn(),
     error: mocks.error,
-    loading: false,
+    loading: mocks.loading,
     refreshing: false,
     joiningRoom: false,
     fetchRooms: mocks.fetchRooms,
@@ -61,6 +62,7 @@ describe('ChatRoomsView', () => {
   beforeEach(() => {
     mocks.connectionStatus = CONNECTION_STATUS.CHECKING;
     mocks.error = null;
+    mocks.loading = false;
     mocks.fetchRooms.mockClear();
     mocks.refreshRooms.mockClear();
     mocks.attemptConnection.mockClear();
@@ -134,7 +136,11 @@ describe('ChatRoomsView', () => {
 
   it('offers reconnect instead of refresh while an error is shown', async () => {
     mocks.connectionStatus = CONNECTION_STATUS.ERROR;
-    mocks.error = { title: '연결 오류', message: '서버와 연결할 수 없습니다.', type: 'danger' };
+    mocks.error = {
+      title: '연결 오류',
+      message: '서버와 연결할 수 없습니다.',
+      type: 'danger',
+    };
 
     render(<ChatRoomsView router={{ push: vi.fn() }} />);
 
@@ -143,5 +149,23 @@ describe('ChatRoomsView', () => {
     });
 
     expect(screen.queryByTestId('refresh-rooms-button')).toBeNull();
+  });
+
+  it('preserves the room list height while asynchronous content is loading', () => {
+    mocks.loading = true;
+    const { rerender } = render(<ChatRoomsView router={{ push: vi.fn() }} />);
+
+    expect(screen.getByTestId('chat-room-list-viewport')).toHaveStyle({
+      height: '430px',
+      minHeight: '430px',
+    });
+
+    mocks.loading = false;
+    rerender(<ChatRoomsView router={{ push: vi.fn() }} />);
+
+    expect(screen.getByTestId('chat-room-list-viewport')).toHaveStyle({
+      height: '430px',
+      minHeight: '430px',
+    });
   });
 });
