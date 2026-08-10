@@ -1,0 +1,112 @@
+name: Frontend CI
+
+on:
+  # test 대상 PR에서는 프론트 변경이 있을 때만 빌드와 테스트를 수행한다.
+  pull_request:
+    branches:
+      - test
+    paths:
+      - "apps/frontend/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/frontend-ci.yml"
+  # test에 병합되면 push 이벤트가 발생하며, 검증 후 이미지를 GHCR에 업로드한다.
+  push:
+    branches:
+      - test
+    paths:
+      - "apps/frontend/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/frontend-ci.yml"
+
+concurrency:
+  # 같은 브랜치/PR의 이전 실행을 취소하고 가장 최근 커밋만 검증한다.
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # PR과 test 브랜치 push에서 공통으로 실행되는 검증 단계다.
+    name: Build and test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm --dir apps/frontend install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm --dir apps/frontend test
+
+      - name: Build application
+        run: pnpm --dir apps/frontend build
+
+  publish-image:
+    # PR에서는 실행하지 않고 test 브랜치에 반영된 경우에만 이미지를 배포한다.
+    name: Build and push image
+    if: github.event_name == 'push'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-frontend" >> "$GITHUB_OUTPUT"
+
+      - name: Set image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # test는 EC2가 사용할 최신 이미지, sha는 특정 커밋을 추적하기 위한 태그다.
+          tags: |
+            type=raw,value=test
+            type=sha
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          # 프론트 Dockerfile은 pnpm workspace 파일을 사용하므로 저장소 루트가 context다.
+          context: .
+          file: apps/frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
