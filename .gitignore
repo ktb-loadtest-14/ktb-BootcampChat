@@ -1,0 +1,12 @@
+node_modules
+
+# Backend
+apps/backend/.env
+apps/backend/target/
+
+# Frontend
+apps/frontend/.env.local
+apps/frontend/.next/
+
+# macOS
+.DS_Store
