@@ -174,11 +174,13 @@ public class RoomService {
             }
         }
 
-        // 이미 참여중인지 확인
-        if (!room.getParticipantIds().contains(user.getId())) {
-            // 채팅방 참여
-            room.getParticipantIds().add(user.getId());
-            room = roomRepository.save(room);
+        // 참여자 목록이 담긴 Room 문서 전체를 save하면, 동시 입장 요청이
+        // 서로의 participantIds를 덮어쓸 수 있다. MongoDB의 $addToSet으로 해당
+        // 사용자만 원자적으로 추가하고, 응답과 이벤트에는 최신 문서를 사용한다.
+        roomRepository.addParticipant(roomId, user.getId());
+        room = roomRepository.findById(roomId).orElse(null);
+        if (room == null) {
+            return null;
         }
         
         // Publish event for room updated
