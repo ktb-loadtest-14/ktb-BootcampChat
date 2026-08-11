@@ -13,10 +13,10 @@ vi.mock('@/services/axios', () => ({
 
 const roomsResponse = (rooms) => ({ data: { data: rooms } });
 
-const renderRoomList = () =>
-  renderHook(() =>
+const renderRoomList = ({ attemptConnection = vi.fn() } = {}) => {
+  const hook = renderHook(() =>
     useRoomList({
-      currentUser: { token: 'token-1' },
+      currentUser: { id: 'user-1', token: 'token-1' },
       router: { push: vi.fn() },
       connectionStatus: CONNECTION_STATUS.CONNECTED,
       setConnectionStatus: vi.fn(),
@@ -25,13 +25,34 @@ const renderRoomList = () =>
       isRetrying: false,
       setIsRetrying: vi.fn(),
       getRetryDelay: vi.fn(() => 1000),
-      attemptConnection: vi.fn(() => Promise.resolve(true)),
+      attemptConnection,
     })
   );
+
+  return { ...hook, attemptConnection };
+};
 
 describe('useRoomList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
+  });
+
+  it('starts the room request without waiting for a health check', async () => {
+    const attemptConnection = vi.fn(() => Promise.resolve(true));
+    axiosInstance.get.mockResolvedValue(roomsResponse([]));
+
+    const { result } = renderRoomList({ attemptConnection });
+
+    await act(async () => {
+      await result.current.fetchRooms();
+    });
+
+    expect(attemptConnection).not.toHaveBeenCalled();
+    expect(axiosInstance.get).toHaveBeenCalledWith('/api/rooms', {
+      timeout: 5000,
+      maxRetries: 0,
+    });
   });
 
   it('replaces the list on refresh without leaving the refreshing flag on', async () => {
@@ -101,5 +122,41 @@ describe('useRoomList', () => {
 
     expect(result.current.error).toBeNull();
     expect(result.current.rooms).toEqual([{ _id: 'room-1' }]);
+  });
+
+  it('restores a lightweight cached list immediately on a full-page revisit', async () => {
+    axiosInstance.get.mockResolvedValue(
+      roomsResponse([
+        {
+          _id: 'room-1',
+          name: '방 1',
+          participants: [{ _id: 'user-1', email: 'private@example.com' }],
+          recentMessageCount: 3,
+          createdAt: '2026-08-11T10:00:00Z',
+        },
+      ])
+    );
+
+    const firstRender = renderRoomList();
+
+    await act(async () => {
+      await firstRender.result.current.fetchRooms();
+    });
+    firstRender.unmount();
+
+    const secondRender = renderRoomList();
+
+    expect(secondRender.result.current.loading).toBe(false);
+    expect(secondRender.result.current.rooms).toEqual([
+      {
+        _id: 'room-1',
+        name: '방 1',
+        hasPassword: false,
+        participantsCount: 1,
+        recentMessageCount: 3,
+        createdAt: '2026-08-11T10:00:00Z',
+        isCreator: false,
+      },
+    ]);
   });
 });
