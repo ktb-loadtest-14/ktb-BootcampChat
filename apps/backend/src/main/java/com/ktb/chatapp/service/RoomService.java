@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -32,25 +33,28 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
     private final RecentMessageCounter recentMessageCounter;
+    private final RoomParticipantPresenceService roomParticipantPresenceService;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventPublisher;
 
     public RoomsResponse getAllRooms(String name) {
-
         try {
             List<Room> rooms = roomRepository.findAll();
-            Map<String, User> usersById = loadUsersById(rooms);
-            Map<String, Integer> recentMessageCounts =
-                    recentMessageCounter.countRecentMessagesByRoomIds(
-                            rooms.stream().map(Room::getId).toList());
+            // 목록 조회는 이미 MongoDB에서 읽은 participantIds 스냅샷을 재사용한다.
+            // 방마다 Redis를 조회하면 빈 방이 cache miss로 남아 요청 수가 방 개수에 비례해 폭증한다.
+            Map<String, Set<String>> participantIdsByRoom = loadParticipantSnapshots(rooms);
+            Map<String, User> usersById = loadUsersById(rooms, participantIdsByRoom);
+            Map<String, Integer> recentMessageCounts = loadRecentMessageCounts(rooms);
 
             // 방·사용자·최근 메시지 수를 각각 일괄 조회한 뒤 메모리에서 응답을 조립한다.
             List<RoomResponse> roomResponses = rooms.stream()
-                .map(room -> mapToRoomResponse(
+                .map(room -> safeMapToRoomResponse(
                         room,
                         name,
                         usersById,
+                        participantIdsByRoom.getOrDefault(room.getId(), Set.of()),
                         recentMessageCounts.getOrDefault(room.getId(), 0)))
+                .flatMap(Optional::stream)
                 .sorted(Comparator.comparing(
                     RoomResponse::getCreatedAtDateTime,
                     Comparator.nullsLast(Comparator.reverseOrder())))
@@ -141,6 +145,7 @@ public class RoomService {
         }
 
         Room savedRoom = roomRepository.save(room);
+        roomParticipantPresenceService.initialize(savedRoom);
         
         // Publish event for room created
         try {
@@ -174,13 +179,12 @@ public class RoomService {
             }
         }
 
-        // 참여자 목록이 담긴 Room 문서 전체를 save하면, 동시 입장 요청이
-        // 서로의 participantIds를 덮어쓸 수 있다. MongoDB의 $addToSet으로 해당
-        // 사용자만 원자적으로 추가하고, 응답과 이벤트에는 최신 문서를 사용한다.
-        roomRepository.addParticipant(roomId, user.getId());
-        room = roomRepository.findById(roomId).orElse(null);
-        if (room == null) {
-            return null;
+        Set<String> participantIds = roomParticipantPresenceService.getParticipantIds(room);
+
+        // 이미 참여중인지 확인
+        if (!participantIds.contains(user.getId())) {
+            roomParticipantPresenceService.addParticipant(roomId, user.getId());
+            room = roomRepository.findById(roomId).orElse(room);
         }
         
         // Publish event for room updated
@@ -197,20 +201,25 @@ public class RoomService {
     public RoomResponse toRoomResponse(Room room, String name) {
         if (room == null) return null;
 
-        Map<String, User> usersById = loadUsersById(List.of(room));
-        int recentMessageCount = recentMessageCounter.countRecentMessages(room.getId());
-        return mapToRoomResponse(room, name, usersById, recentMessageCount);
+        Set<String> participantIds = safeParticipantIds(room);
+        Map<String, Set<String>> participantIdsByRoom = new HashMap<>();
+        if (room.getId() != null) {
+            participantIdsByRoom.put(room.getId(), participantIds);
+        }
+        Map<String, User> usersById = loadUsersById(List.of(room), participantIdsByRoom);
+        int recentMessageCount = safeRecentMessageCount(room.getId());
+        return mapToRoomResponse(room, name, usersById, participantIds, recentMessageCount);
     }
 
-    private Map<String, User> loadUsersById(Collection<Room> rooms) {
+    private Map<String, User> loadUsersById(
+            Collection<Room> rooms,
+            Map<String, Set<String>> participantIdsByRoom) {
         Set<String> userIds = new HashSet<>();
         for (Room room : rooms) {
             if (room.getCreator() != null) {
                 userIds.add(room.getCreator());
             }
-            if (room.getParticipantIds() != null) {
-                userIds.addAll(room.getParticipantIds());
-            }
+            userIds.addAll(participantIdsByRoom.getOrDefault(room.getId(), Set.of()));
         }
 
         if (userIds.isEmpty()) {
@@ -225,35 +234,130 @@ public class RoomService {
             Room room,
             String name,
             Map<String, User> usersById,
+            Set<String> participantIds,
             int recentMessageCount) {
         User creator = usersById.get(room.getCreator());
-        List<User> participants = room.getParticipantIds().stream()
+        List<User> participants = participantIds.stream()
                 .map(usersById::get)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .toList();
 
         return RoomResponse.builder()
             .id(room.getId())
             .name(room.getName() != null ? room.getName() : "제목 없음")
             .hasPassword(room.isHasPassword())
-            .creator(creator != null ? UserResponse.builder()
-                .id(creator.getId())
-                .name(creator.getName() != null ? creator.getName() : "알 수 없음")
-                .email(creator.getEmail() != null ? creator.getEmail() : "")
-                .build() : null)
+            .creator(toUserSummary(creator, room.getCreator()))
             .participants(participants.stream()
-                .filter(p -> p != null && p.getId() != null)
-                .map(p -> UserResponse.builder()
-                    .id(p.getId())
-                    .name(p.getName() != null ? p.getName() : "알 수 없음")
-                    .email(p.getEmail() != null ? p.getEmail() : "")
-                    .build())
+                .map(this::toUserSummary)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList()))
             .createdAtDateTime(room.getCreatedAt())
             .isCreator(creator != null
+                    && creator.getEmail() != null)
+            .createdAtDateTime(room.getCreatedAt() != null ? room.getCreatedAt() : LocalDateTime.now())
+            .isCreator(creator != null
                     && creator.getEmail() != null
+                    && name != null
                     && creator.getEmail().equalsIgnoreCase(name))
             .recentMessageCount(recentMessageCount)
             .build();
+    }
+
+    private Map<String, Integer> loadRecentMessageCounts(Collection<Room> rooms) {
+        List<String> roomIds = rooms.stream()
+                .map(Room::getId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (roomIds.isEmpty()) {
+            return Map.of();
+        }
+
+        try {
+            return recentMessageCounter.countRecentMessagesByRoomIds(roomIds);
+        } catch (RuntimeException e) {
+            log.warn("최근 메시지 수 일괄 조회 실패. 방별 fallback으로 전환합니다.", e);
+            Map<String, Integer> fallback = new HashMap<>();
+            for (String roomId : roomIds) {
+                fallback.put(roomId, safeRecentMessageCount(roomId));
+            }
+            return fallback;
+        }
+    }
+
+    private int safeRecentMessageCount(String roomId) {
+        if (roomId == null) {
+            return 0;
+        }
+
+        try {
+            return recentMessageCounter.countRecentMessages(roomId);
+        } catch (RuntimeException e) {
+            log.warn("최근 메시지 수 조회 실패 - roomId={}", roomId, e);
+            return 0;
+        }
+    }
+
+    private Set<String> safeParticipantIds(Room room) {
+        if (room == null) {
+            return Set.of();
+        }
+
+        try {
+            return roomParticipantPresenceService.getParticipantIds(room);
+        } catch (RuntimeException e) {
+            log.warn("참여자 조회 실패. Room 문서 participantIds로 fallback합니다. roomId={}", room.getId(), e);
+            return room.getParticipantIds() != null ? room.getParticipantIds() : Set.of();
+        }
+    }
+
+    private Optional<RoomResponse> safeMapToRoomResponse(
+            Room room,
+            String name,
+            Map<String, User> usersById,
+            Set<String> participantIds,
+            int recentMessageCount) {
+        try {
+            return Optional.of(mapToRoomResponse(
+                    room,
+                    name,
+                    usersById,
+                    participantIds,
+                    recentMessageCount));
+        } catch (RuntimeException e) {
+            log.warn("방 응답 조립 실패 - roomId={}", room != null ? room.getId() : null, e);
+            return Optional.empty();
+        }
+    }
+
+    private Map<String, Set<String>> loadParticipantSnapshots(Collection<Room> rooms) {
+        Map<String, Set<String>> participantIdsByRoom = new HashMap<>();
+        for (Room room : rooms) {
+            if (room == null || room.getId() == null) {
+                continue;
+            }
+
+            Set<String> participantIds = room.getParticipantIds() == null
+                    ? Set.of()
+                    : new HashSet<>(room.getParticipantIds());
+            participantIdsByRoom.put(room.getId(), participantIds);
+        }
+        return participantIdsByRoom;
+    }
+
+    private UserResponse toUserSummary(User user) {
+        return toUserSummary(user, null);
+    }
+
+    private UserResponse toUserSummary(User user, String fallbackId) {
+        if (user == null && fallbackId == null) {
+            return null;
+        }
+
+        return UserResponse.builder()
+                .id(user != null && user.getId() != null ? user.getId() : fallbackId)
+                .name(user != null && user.getName() != null ? user.getName() : "알 수 없음")
+                .email(user != null && user.getEmail() != null ? user.getEmail() : "")
+                .build();
     }
 }

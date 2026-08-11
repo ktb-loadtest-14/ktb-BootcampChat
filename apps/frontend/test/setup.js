@@ -56,6 +56,21 @@ const ensureStorage = (key) => {
 ensureStorage('localStorage');
 ensureStorage('sessionStorage');
 
+class IntersectionObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+
+Object.defineProperty(globalThis, 'IntersectionObserver', {
+  configurable: true,
+  value: IntersectionObserverMock,
+  writable: true,
+});
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

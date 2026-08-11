@@ -14,6 +14,7 @@ import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.RateLimitCheckResult;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RoomActivityNotifier;
 import com.ktb.chatapp.service.SessionService;
@@ -71,7 +72,8 @@ class ChatMessageHandlerTest {
                         roomActivityNotifier,
                         bannedWordChecker,
                         rateLimitService,
-                        meterRegistry);
+                        meterRegistry,
+                        new FileUrl("local", ""));
     }
 
     @Test

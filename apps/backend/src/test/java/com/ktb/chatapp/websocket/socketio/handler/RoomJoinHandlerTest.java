@@ -13,6 +13,8 @@ import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.FileUrl;
+import com.ktb.chatapp.service.RoomParticipantPresenceService;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -41,6 +43,7 @@ class RoomJoinHandlerTest {
     @Mock private MessageRepository messageRepository;
     @Mock private RoomRepository roomRepository;
     @Mock private UserRepository userRepository;
+    @Mock private RoomParticipantPresenceService roomParticipantPresenceService;
     @Mock private UserRooms userRooms;
     @Mock private MessageLoader messageLoader;
     @Mock private MessageResponseMapper messageResponseMapper;
@@ -57,10 +60,12 @@ class RoomJoinHandlerTest {
                 messageRepository,
                 roomRepository,
                 userRepository,
+                roomParticipantPresenceService,
                 userRooms,
                 messageLoader,
                 messageResponseMapper,
-                roomLeaveHandler);
+                roomLeaveHandler,
+                new FileUrl("local", ""));
     }
 
     @Test
@@ -92,6 +97,8 @@ class RoomJoinHandlerTest {
         when(client.get("user")).thenReturn(socketUser);
         when(userRepository.findById("user-1")).thenReturn(Optional.of(user));
         when(roomRepository.findById("room-1")).thenReturn(Optional.of(room));
+        when(roomParticipantPresenceService.getParticipantIds(room))
+                .thenReturn(room.getParticipantIds());
         when(userRooms.isInRoom("user-1", "room-1")).thenReturn(false);
         when(messageRepository.save(any(Message.class))).thenAnswer(invocation -> {
             Message message = invocation.getArgument(0);
@@ -107,7 +114,8 @@ class RoomJoinHandlerTest {
 
         handler.handleJoinRoom(client, "room-1");
 
-        verify(roomRepository).addParticipant("room-1", "user-1");
+        verify(roomParticipantPresenceService).addParticipant("room-1", "user-1");
+        verify(roomRepository, org.mockito.Mockito.never()).addParticipant(any(), any());
         verify(client).joinRoom("room-1");
         verify(userRooms).add("user-1", "room-1");
         verify(client).sendEvent(eq(JOIN_ROOM_SUCCESS), any());

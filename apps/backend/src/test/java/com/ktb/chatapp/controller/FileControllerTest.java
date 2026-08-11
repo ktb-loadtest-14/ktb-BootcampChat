@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
@@ -15,6 +16,8 @@ import com.ktb.chatapp.security.SessionAwareJwtAuthenticationConverter;
 import com.ktb.chatapp.service.FileAccess;
 import com.ktb.chatapp.service.FileAccessService;
 import com.ktb.chatapp.service.FileService;
+import com.ktb.chatapp.service.FileUploadResult;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.service.PreviewNotSupportedException;
 import com.ktb.chatapp.service.RateLimitService;
 import java.net.URI;
@@ -29,6 +32,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -66,6 +70,9 @@ class FileControllerTest {
     @MockitoBean
     private UserRepository userRepository;
 
+    @MockitoBean
+    private FileUrl fileUrl;
+
     /** RateLimitInterceptor가 웹 슬라이스에 함께 올라오므로 그 의존성도 채워야 한다. */
     @MockitoBean
     private RateLimitService rateLimitService;
@@ -78,6 +85,33 @@ class FileControllerTest {
     void setUp() {
         when(userRepository.findByEmail(EMAIL))
                 .thenReturn(Optional.of(User.builder().id(USER_ID).email(EMAIL).build()));
+    }
+
+    @Test
+    @DisplayName("upload 성공 → 서버가 조립한 접근 가능 URL을 응답한다")
+    void uploadFile_success_returnsServerUrl() throws Exception {
+        var multipartFile = new MockMultipartFile(
+                "file", ORIGINAL_NAME, "image/png", "photo-bytes".getBytes(StandardCharsets.UTF_8));
+        var storedFile = com.ktb.chatapp.model.File.builder()
+                .id("file-1")
+                .filename(FILE_NAME)
+                .originalname(ORIGINAL_NAME)
+                .mimetype("image/png")
+                .size(11L)
+                .path("chat/" + FILE_NAME)
+                .user(USER_ID)
+                .build();
+
+        when(fileService.uploadFile(any(), any()))
+                .thenReturn(FileUploadResult.builder().success(true).file(storedFile).build());
+        when(fileUrl.of("chat/" + FILE_NAME)).thenReturn("/api/files/view/" + FILE_NAME);
+
+        mockMvc.perform(multipart("/api/files/upload")
+                        .file(multipartFile)
+                        .principal(PRINCIPAL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.file.filename").value(FILE_NAME))
+                .andExpect(jsonPath("$.file.url").value("/api/files/view/" + FILE_NAME));
     }
 
     @Test

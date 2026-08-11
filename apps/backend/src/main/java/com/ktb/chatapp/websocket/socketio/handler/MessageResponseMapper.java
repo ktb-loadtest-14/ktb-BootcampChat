@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 public class MessageResponseMapper {
 
     private final FileRepository fileRepository;
+    private final FileUrl fileUrl;
 
     /**
      * Message 엔티티를 MessageResponse DTO로 변환
@@ -50,7 +51,7 @@ public class MessageResponseMapper {
                     .id(sender.getId())
                     .name(sender.getName())
                     .email(sender.getEmail())
-                    .profileImage(FileUrl.of(sender.getProfileImage()))
+                    .profileImage(fileUrl.of(sender.getProfileImage()))
                     .build());
         }
 
@@ -63,6 +64,7 @@ public class MessageResponseMapper {
                         .originalname(file.getOriginalname())
                         .mimetype(file.getMimetype())
                         .size(file.getSize())
+                        .url(fileUrl.of(file.getPath()))
                         .build())
                 .ifPresent(builder::file);
 

@@ -137,12 +137,17 @@ const FileMessage = ({
         throw new Error('파일 정보가 없습니다.');
       }
 
-      if (!user?.token || !user?.sessionId) {
+      const hasPublicUrl = /^https?:\/\//i.test(msg.file?.url || '');
+      if (!hasPublicUrl && (!user?.token || !user?.sessionId)) {
         throw new Error('인증 정보가 없습니다.');
       }
 
-      const baseUrl = fileService.getFileUrl(msg.file.filename, true);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user?.token)}&sessionId=${encodeURIComponent(user?.sessionId)}`;
+      const authenticatedUrl = fileService.getPreviewUrl(
+        msg.file,
+        user?.token,
+        user?.sessionId,
+        true
+      );
 
       const newWindow = window.open(authenticatedUrl, '_blank');
       if (!newWindow) {
@@ -165,8 +170,13 @@ const FileMessage = ({
         );
       }
 
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
+      const hasPublicUrl = /^https?:\/\//i.test(msg.file?.url || '');
+      if (!hasPublicUrl && (!user?.token || !user?.sessionId)) {
+        return (
+          <div className="flex items-center justify-center h-full bg-gray-100">
+            <Image className="w-8 h-8 text-gray-400" />
+          </div>
+        );
       }
 
       const previewUrl = fileService.getPreviewUrl(msg.file, user?.token, user?.sessionId, true);
@@ -196,7 +206,6 @@ const FileMessage = ({
       );
     } catch (error) {
       console.error('Image preview error:', error);
-      setError(error.message || '이미지 미리보기를 불러올 수 없습니다.');
       return (
         <div className="flex items-center justify-center h-full bg-gray-100">
           <Image className="w-8 h-8 text-gray-400" />
@@ -238,7 +247,6 @@ const FileMessage = ({
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 비디오`}
-                crossOrigin="use-credentials"
               >
                 <source src={previewUrl} type={mimetype} />
                 <track kind="captions" />
@@ -279,7 +287,6 @@ const FileMessage = ({
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 오디오`}
-                crossOrigin="use-credentials"
               >
                 <source src={previewUrl} type={mimetype} />
                 오디오를 재생할 수 없습니다.
@@ -337,8 +344,8 @@ const FileMessage = ({
             {error && (
               <div>{error}</div>
             )}
-            {!error && renderFilePreview()}
-            {!error && msg.content && (
+            {renderFilePreview()}
+            {msg.content && (
               <div className="mt-3 text-base leading-relaxed">
                 <MessageContent content={msg.content} />
               </div>

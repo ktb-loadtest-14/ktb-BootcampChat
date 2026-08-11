@@ -12,6 +12,8 @@ import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.RoomParticipantPresenceService;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -40,8 +42,10 @@ public class RoomLeaveHandler {
     private final MessageRepository messageRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
+    private final RoomParticipantPresenceService roomParticipantPresenceService;
     private final UserRooms userRooms;
     private final MessageResponseMapper messageResponseMapper;
+    private final FileUrl fileUrl;
     
     @OnEvent(LEAVE_ROOM)
     public void handleLeaveRoom(SocketIOClient client, String roomId) {
@@ -67,7 +71,7 @@ public class RoomLeaveHandler {
                 return;
             }
             
-            roomRepository.removeParticipant(roomId, userId);
+            roomParticipantPresenceService.removeParticipant(roomId, userId);
             
             client.leaveRoom(roomId);
             userRooms.remove(userId, roomId);
@@ -114,13 +118,12 @@ public class RoomLeaveHandler {
             return;
         }
         
-        var participantList = roomOpt.get()
-                .getParticipantIds()
+        var participantList = roomParticipantPresenceService.getParticipantIds(roomOpt.get())
                 .stream()
                 .map(userRepository::findById)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
-                .map(UserResponse::from)
+                .map(user -> UserResponse.from(user, fileUrl))
                 .toList();
         
         if (participantList.isEmpty()) {

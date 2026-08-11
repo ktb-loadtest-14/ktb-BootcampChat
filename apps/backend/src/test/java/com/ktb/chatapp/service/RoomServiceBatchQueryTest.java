@@ -29,6 +29,7 @@ class RoomServiceBatchQueryTest {
     @Mock private RoomRepository roomRepository;
     @Mock private UserRepository userRepository;
     @Mock private RecentMessageCounter recentMessageCounter;
+    @Mock private RoomParticipantPresenceService roomParticipantPresenceService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -61,6 +62,7 @@ class RoomServiceBatchQueryTest {
                 roomRepository,
                 userRepository,
                 recentMessageCounter,
+                roomParticipantPresenceService,
                 passwordEncoder,
                 eventPublisher);
 
@@ -72,6 +74,7 @@ class RoomServiceBatchQueryTest {
         assertTrue(response.getData().getFirst().isCreator());
         verify(userRepository).findAllById(any());
         verify(recentMessageCounter).countRecentMessagesByRoomIds(List.of(room.getId()));
+        verify(roomParticipantPresenceService, never()).getParticipantIds(any());
         verify(userRepository, never()).findById(any());
         verify(recentMessageCounter, never()).countRecentMessages(room.getId());
     }

@@ -1,0 +1,42 @@
+name: Backend Dev CI
+
+on:
+  # dev 브랜치에 백엔드 관련 변경이 push된 경우에만 검증한다.
+  push:
+    branches:
+      - dev
+    paths:
+      - "apps/backend/**"
+      - ".github/workflows/backend-dev-ci.yml"
+
+concurrency:
+  # dev에 push가 연속으로 들어오면 가장 최근 커밋만 검증한다.
+  group: backend-dev-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+          cache-dependency-path: apps/backend/pom.xml
+
+      - name: Build and run tests
+        run: ./mvnw -B clean verify
