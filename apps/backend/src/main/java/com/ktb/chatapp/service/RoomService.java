@@ -144,7 +144,7 @@ public class RoomService {
         
         // Publish event for room created
         try {
-            RoomResponse roomResponse = mapToRoomResponse(savedRoom, name);
+            RoomResponse roomResponse = toRoomResponse(savedRoom, name);
             eventPublisher.publishEvent(new RoomCreatedEvent(this, roomResponse));
         } catch (Exception e) {
             log.error("roomCreated 이벤트 발행 실패", e);
@@ -185,7 +185,7 @@ public class RoomService {
         
         // Publish event for room updated
         try {
-            RoomResponse roomResponse = mapToRoomResponse(room, name);
+            RoomResponse roomResponse = toRoomResponse(room, name);
             eventPublisher.publishEvent(new RoomUpdatedEvent(this, roomId, roomResponse));
         } catch (Exception e) {
             log.error("roomUpdate 이벤트 발행 실패", e);
@@ -194,7 +194,7 @@ public class RoomService {
         return room;
     }
 
-    private RoomResponse mapToRoomResponse(Room room, String name) {
+    public RoomResponse toRoomResponse(Room room, String name) {
         if (room == null) return null;
 
         Map<String, User> usersById = loadUsersById(List.of(room));
@@ -250,7 +250,9 @@ public class RoomService {
                     .build())
                 .collect(Collectors.toList()))
             .createdAtDateTime(room.getCreatedAt())
-            .isCreator(creator != null && creator.getId().equals(name))
+            .isCreator(creator != null
+                    && creator.getEmail() != null
+                    && creator.getEmail().equalsIgnoreCase(name))
             .recentMessageCount(recentMessageCount)
             .build();
     }

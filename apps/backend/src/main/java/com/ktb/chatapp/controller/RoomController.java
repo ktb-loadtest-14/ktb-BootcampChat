@@ -3,9 +3,6 @@ package com.ktb.chatapp.controller;
 import com.ktb.chatapp.annotation.RateLimit;
 import com.ktb.chatapp.dto.*;
 import com.ktb.chatapp.model.Room;
-import com.ktb.chatapp.model.User;
-import com.ktb.chatapp.repository.UserRepository;
-import com.ktb.chatapp.service.RecentMessageCounter;
 import com.ktb.chatapp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -19,8 +16,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -38,8 +33,6 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/rooms")
 public class RoomController {
 
-    private final UserRepository userRepository;
-    private final RecentMessageCounter recentMessageCounter;
     private final RoomService roomService;
 
     @Value("${spring.profiles.active:production}")
@@ -151,7 +144,7 @@ public class RoomController {
             }
 
             Room savedRoom = roomService.createRoom(createRoomRequest, principal.getName());
-            RoomResponse roomResponse = mapToRoomResponse(savedRoom, principal.getName());
+            RoomResponse roomResponse = roomService.toRoomResponse(savedRoom, principal.getName());
 
             return ResponseEntity.status(201).body(
                 Map.of(
@@ -197,7 +190,7 @@ public class RoomController {
             }
 
             Room room = roomOpt.get();
-            RoomResponse roomResponse = mapToRoomResponse(room, principal.getName());
+            RoomResponse roomResponse = roomService.toRoomResponse(room, principal.getName());
 
             return ResponseEntity.ok(
                 Map.of(
@@ -241,7 +234,7 @@ public class RoomController {
                         .body(StandardResponse.error("채팅방을 찾을 수 없습니다."));
             }
 
-            RoomResponse roomResponse = mapToRoomResponse(joinedRoom, principal.getName());
+            RoomResponse roomResponse = roomService.toRoomResponse(joinedRoom, principal.getName());
             
             return ResponseEntity.ok(
                 Map.of(
@@ -266,37 +259,4 @@ public class RoomController {
         }
     }
 
-    private RoomResponse mapToRoomResponse(Room room, String name) {
-        User creator = userRepository.findById(room.getCreator()).orElse(null);
-        if (creator == null) {
-            throw new RuntimeException("Creator not found for room " + room.getId());
-        }
-        UserResponse creatorSummary = UserResponse.from(creator);
-        List<UserResponse> participantSummaries = room.getParticipantIds()
-                .stream()
-                .map(userRepository::findById).peek(optUser -> {
-                    if (optUser.isEmpty()) {
-                        log.warn("Participant not found: roomId={}, userId={}", room.getId(), optUser);
-                    }
-                })
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .map(UserResponse::from)
-                .toList();
-
-        boolean isCreator = room.getCreator().equals(name);
-
-        int recentMessageCount = recentMessageCounter.countRecentMessages(room.getId());
-
-        return RoomResponse.builder()
-                .id(room.getId())
-                .name(room.getName())
-                .hasPassword(room.isHasPassword())
-                .creator(creatorSummary)
-                .participants(participantSummaries)
-                .createdAtDateTime(room.getCreatedAt() != null ? room.getCreatedAt() : LocalDateTime.now())
-                .isCreator(isCreator)
-                .recentMessageCount((int) recentMessageCount)
-                .build();
-    }
 }
