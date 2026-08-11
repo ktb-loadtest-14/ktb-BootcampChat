@@ -17,6 +17,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -68,6 +69,7 @@ class RoomServiceBatchQueryTest {
         assertEquals(1, response.getData().size());
         assertEquals(2, response.getData().getFirst().getParticipants().size());
         assertEquals(3, response.getData().getFirst().getRecentMessageCount());
+        assertTrue(response.getData().getFirst().isCreator());
         verify(userRepository).findAllById(any());
         verify(recentMessageCounter).countRecentMessagesByRoomIds(List.of(room.getId()));
         verify(userRepository, never()).findById(any());

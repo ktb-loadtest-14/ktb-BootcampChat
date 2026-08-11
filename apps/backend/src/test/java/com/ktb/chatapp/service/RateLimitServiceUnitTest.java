@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,9 +22,7 @@ import static org.mockito.Mockito.when;
 @DisplayName("RateLimitService 단위 테스트")
 class RateLimitServiceUnitTest {
 
-    private static final String HOST_NAME = "test-host";
     private static final String CLIENT_ID = "client-1";
-    private static final String STORE_CLIENT_ID = HOST_NAME + ":" + CLIENT_ID;
 
     @Mock
     private RateLimitStore rateLimitStore;
@@ -34,13 +32,12 @@ class RateLimitServiceUnitTest {
     @BeforeEach
     void setUp() {
         rateLimitService = new RateLimitService(rateLimitStore);
-        ReflectionTestUtils.setField(rateLimitService, "hostName", HOST_NAME);
     }
 
     @Test
-    @DisplayName("최초 요청은 host-prefixed clientId로 원자적으로 처리되고 남은 횟수를 반환한다")
-    void checkRateLimit_FirstRequest_ConsumesHostPrefixedClientId() {
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
+    @DisplayName("최초 요청은 서버와 무관한 clientId로 원자적으로 처리되고 남은 횟수를 반환한다")
+    void checkRateLimit_FirstRequest_ConsumesGlobalClientId() {
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
                 .thenReturn(new RateLimitConsumeResult(true, 1, Instant.now().plusSeconds(30)));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, Duration.ofSeconds(30));
@@ -50,27 +47,27 @@ class RateLimitServiceUnitTest {
         assertThat(result.remaining()).isEqualTo(2);
         assertThat(result.windowSeconds()).isEqualTo(30);
         assertThat(result.retryAfterSeconds()).isBetween(1L, 30L);
-        verify(rateLimitStore).consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
+        verify(rateLimitStore).consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
     }
 
     @Test
     @DisplayName("기존 카운트가 한도 미만이면 증가된 결과를 반환한다")
     void checkRateLimit_ExistingBelowLimit_IncrementsCount() {
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
                 .thenReturn(new RateLimitConsumeResult(true, 2, Instant.now().plusSeconds(20)));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, Duration.ofSeconds(30));
 
         assertThat(result.allowed()).isTrue();
         assertThat(result.remaining()).isEqualTo(1);
-        verify(rateLimitStore).consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
+        verify(rateLimitStore).consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
     }
 
     @Test
     @DisplayName("기존 카운트가 한도에 도달하면 retry-after와 reset epoch를 반환한다")
     void checkRateLimit_LimitReached_ReturnsRetryAfterWithoutSaving() {
         Instant expiresAt = Instant.now().plusSeconds(10);
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
                 .thenReturn(new RateLimitConsumeResult(false, 3, expiresAt));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, Duration.ofSeconds(30));
@@ -80,13 +77,13 @@ class RateLimitServiceUnitTest {
         assertThat(result.remaining()).isZero();
         assertThat(result.retryAfterSeconds()).isBetween(1L, 10L);
         assertThat(result.resetEpochSeconds()).isEqualTo(expiresAt.getEpochSecond());
-        verify(rateLimitStore).consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
+        verify(rateLimitStore).consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
     }
 
     @Test
     @DisplayName("0초 window는 최소 1초 window로 정규화된다")
     void checkRateLimit_ZeroWindow_NormalizesToOneSecond() {
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(1))))
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(1))))
                 .thenReturn(new RateLimitConsumeResult(true, 1, Instant.now().plusSeconds(1)));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, Duration.ZERO);
@@ -99,7 +96,7 @@ class RateLimitServiceUnitTest {
     @Test
     @DisplayName("null window는 최소 1초 window로 정규화된다")
     void checkRateLimit_NullWindow_NormalizesToOneSecond() {
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(1))))
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(1))))
                 .thenReturn(new RateLimitConsumeResult(true, 1, Instant.now().plusSeconds(1)));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, null);
@@ -113,7 +110,7 @@ class RateLimitServiceUnitTest {
     @DisplayName("만료된 저장소 문서는 새 window로 리셋된 결과를 반환한다")
     void checkRateLimit_ExpiredStoredRateLimit_StartsNewWindow() {
         Instant nextExpiresAt = Instant.now().plusSeconds(30);
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
                 .thenReturn(new RateLimitConsumeResult(true, 1, nextExpiresAt));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, Duration.ofSeconds(30));
@@ -122,13 +119,13 @@ class RateLimitServiceUnitTest {
         assertThat(result.remaining()).isEqualTo(2);
         assertThat(result.retryAfterSeconds()).isBetween(1L, 30L);
         assertThat(result.resetEpochSeconds()).isGreaterThan(Instant.now().getEpochSecond());
-        verify(rateLimitStore).consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
+        verify(rateLimitStore).consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
     }
 
     @Test
     @DisplayName("저장소 실패 시 요청은 허용하고 전체 한도를 남긴다")
     void checkRateLimit_StoreFailure_FailsOpenDeterministically() {
-        when(rateLimitStore.consume(eq(STORE_CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
+        when(rateLimitStore.consume(eq(CLIENT_ID), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
                 .thenThrow(new IllegalStateException("store down"));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(CLIENT_ID, 3, Duration.ofSeconds(30));
@@ -141,15 +138,14 @@ class RateLimitServiceUnitTest {
     }
 
     @Test
-    @DisplayName("null clientId도 host prefix가 적용된 저장소 key로 처리된다")
-    void checkRateLimit_NullClientId_UsesHostPrefixedNullKey() {
-        String storeClientId = HOST_NAME + ":null";
-        when(rateLimitStore.consume(eq(storeClientId), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
+    @DisplayName("null clientId도 저장소에 그대로 전달된다")
+    void checkRateLimit_NullClientId_IsPassedThrough() {
+        when(rateLimitStore.consume(isNull(), eq(3), any(Instant.class), eq(Duration.ofSeconds(30))))
                 .thenReturn(new RateLimitConsumeResult(true, 1, Instant.now().plusSeconds(30)));
 
         RateLimitCheckResult result = rateLimitService.checkRateLimit(null, 3, Duration.ofSeconds(30));
 
         assertThat(result.allowed()).isTrue();
-        verify(rateLimitStore).consume(eq(storeClientId), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
+        verify(rateLimitStore).consume(isNull(), eq(3), any(Instant.class), eq(Duration.ofSeconds(30)));
     }
 }
