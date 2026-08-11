@@ -1,0 +1,136 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--vapor-space-300);
+  overflow-y: auto;
+  background: var(--vapor-color-background);
+  color: var(--vapor-color-text-primary);
+}
+
+.form {
+  display: flex;
+  width: min(400px, 100%);
+  flex-direction: column;
+  gap: var(--vapor-space-250);
+  padding: var(--vapor-space-300);
+  border: 1px solid var(--vapor-color-border-normal);
+  border-radius: var(--vapor-radius-xl);
+}
+
+.logo {
+  display: block;
+  width: 50%;
+  height: auto;
+  margin: 0 auto var(--vapor-space-200);
+}
+
+.fields,
+.actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.fields {
+  gap: var(--vapor-space-200);
+}
+
+.actions {
+  gap: var(--vapor-space-400);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vapor-space-100);
+}
+
+.label {
+  font-size: var(--vapor-font-size-075);
+  font-weight: 500;
+}
+
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vapor-space-150);
+  border: 1px solid var(--vapor-color-border-normal);
+  border-radius: var(--vapor-radius-lg);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.input:focus-visible {
+  border-color: #4f8cff;
+  box-shadow: 0 0 0 2px rgb(79 140 255 / 25%);
+}
+
+.input:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.description {
+  margin: 0;
+  color: var(--vapor-color-text-muted);
+  font-size: 0.75rem;
+}
+
+.callout {
+  padding: var(--vapor-space-150);
+  border: 1px solid currentColor;
+  border-radius: var(--vapor-radius-lg);
+  font-size: var(--vapor-font-size-075);
+}
+
+.warning {
+  color: #f59e0b;
+  background: rgb(245 158 11 / 10%);
+}
+
+.success {
+  color: #22c55e;
+  background: rgb(34 197 94 / 10%);
+}
+
+.button {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--vapor-radius-lg);
+  font: inherit;
+  font-weight: 600;
+}
+
+.submitButton {
+  background: #3478f6;
+  color: #fff;
+}
+
+.submitButton:not(:disabled):hover {
+  background: #2868dc;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vapor-space-100);
+  font-size: var(--vapor-font-size-075);
+}
+
+.linkButton {
+  min-height: 32px;
+  padding: 0 var(--vapor-space-100);
+  background: transparent;
+  color: #6da0ff;
+}
+
+@media (max-height: 760px) {
+  .page {
+    align-items: flex-start;
+  }
+}
