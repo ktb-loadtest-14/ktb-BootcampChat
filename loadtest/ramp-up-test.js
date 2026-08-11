@@ -439,28 +439,59 @@ class RampUpLoadTester {
 
   async uploadFileToChat(socket, token, sessionId, userId, roomId) {
     try {
-      // Create form data with the image file
-      const formData = new FormData();
       const imagePath = path.join(__dirname, 'profile.png');
-      const fileStream = fs.createReadStream(imagePath);
-      
-      formData.append('file', fileStream, 'profile.png');
+      const fileContent = await fs.promises.readFile(imagePath);
+      const authHeaders = {
+        'x-auth-token': token,
+        'x-session-id': sessionId
+      };
 
-      // Upload file to server
-      const uploadResponse = await axios.post(
-        `${this.config.apiUrl}/api/files/upload`,
-        formData,
+      const preparation = await axios.post(
+        `${this.config.apiUrl}/api/files/upload-url`,
         {
+          filename: 'profile.png',
+          contentType: 'image/png',
+          size: fileContent.length
+        },
+        {
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          timeout: 10000
+        }
+      );
+
+      let uploadResponse;
+      if (preparation.data.directUpload) {
+        await axios.put(preparation.data.uploadUrl, fileContent, {
           headers: {
-            'x-auth-token': token,
-            'x-session-id': sessionId,
-            ...formData.getHeaders()
+            ...preparation.data.requiredHeaders,
+            'Content-Length': fileContent.length
           },
           timeout: 10000,
           maxContentLength: Infinity,
           maxBodyLength: Infinity
-        }
-      );
+        });
+        uploadResponse = await axios.post(
+          `${this.config.apiUrl}/api/files/uploads/${preparation.data.file._id}/complete`,
+          {},
+          { headers: authHeaders, timeout: 10000 }
+        );
+      } else {
+        const formData = new FormData();
+        formData.append('file', fileContent, {
+          filename: 'profile.png',
+          contentType: 'image/png'
+        });
+        uploadResponse = await axios.post(
+          `${this.config.apiUrl}/api/files/upload`,
+          formData,
+          {
+            headers: { ...authHeaders, ...formData.getHeaders() },
+            timeout: 10000,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
+          }
+        );
+      }
 
       if (uploadResponse.data.success && uploadResponse.data.file) {
         const fileData = uploadResponse.data.file;

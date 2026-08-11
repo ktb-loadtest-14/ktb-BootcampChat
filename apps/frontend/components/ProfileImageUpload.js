@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import CustomAvatar from '@/components/CustomAvatar';
 import { Toast } from '@/components/Toast';
 import api from '@/lib/api/client';
+import fileService from '@/services/fileService';
 import { saveStoredUser } from '@/lib/auth/authStorage';
 
 const ProfileImageUpload = ({ currentImage, onImageChange }) => {
@@ -55,22 +56,8 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
         throw new Error('인증 정보가 없습니다.');
       }
 
-      // FormData 생성
-      const formData = new FormData();
-      formData.append('profileImage', file);
-
-      // 파일 업로드 요청
-      const response = await api.post(
-        '/api/users/profile-image',
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-
-      const data = response.data;
+      // S3 모드에서는 Presigned URL로 직접 PUT하고, 로컬 모드에서는 기존 API로 업로드한다.
+      const data = await fileService.uploadProfileImage(file);
 
       if (!data?.imageUrl) {
         throw new Error(data?.message || '이미지 업로드에 실패했습니다.');
