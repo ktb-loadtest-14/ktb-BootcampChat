@@ -24,7 +24,6 @@ done
 DEPLOY_USER="${DEPLOY_USER:-ubuntu}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-${HOME}/.ssh/deploy_ed25519}"
 FRONTEND_ENV_FILE="${FRONTEND_ENV_FILE:-/opt/bootcamp-chat/frontend.env}"
-EXPECTED_HOST_COUNT="${EXPECTED_HOST_COUNT:-2}"
 
 [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || fail "올바르지 않은 DEPLOY_USER입니다."
 [[ "$GHCR_USERNAME" =~ ^[A-Za-z0-9-]+$ ]] || fail "올바르지 않은 GHCR_USERNAME입니다."
@@ -38,8 +37,7 @@ while IFS= read -r host; do
   [[ -n "$host" ]] && hosts+=("$host")
 done < <(printf '%s\n' "$DEPLOY_HOSTS" | tr '[:space:]' '\n')
 
-[[ "${#hosts[@]}" -eq "$EXPECTED_HOST_COUNT" ]] || \
-  fail "FRONTEND_HOSTS는 ${EXPECTED_HOST_COUNT}대여야 합니다. 현재: ${#hosts[@]}대"
+[[ "${#hosts[@]}" -gt 0 ]] || fail "FRONTEND_HOSTS에 배포 대상이 한 대 이상 필요합니다."
 
 declare -A seen_hosts=()
 for host in "${hosts[@]}"; do
@@ -75,14 +73,18 @@ ssh_options=(
   -o StrictHostKeyChecking=accept-new
 )
 
-for host in "${hosts[@]}"; do
-  target="${DEPLOY_USER}@${host}"
+deploy_host() {
+  local host="$1"
+  local target="${DEPLOY_USER}@${host}"
+  local remote_command
+
   log "배포 시작: $target"
 
   # 토큰을 명령행 인자로 넘기지 않고 표준입력으로 전달한다.
   if ! printf '%s' "$GHCR_TOKEN" | ssh "${ssh_options[@]}" "$target" \
     docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin >/dev/null; then
-    fail "GHCR 로그인 실패: $target"
+    log "ERROR: GHCR 로그인 실패: $target"
+    return 1
   fi
 
   printf -v remote_command 'bash -s -- %q %q' "$resolved_image" "$FRONTEND_ENV_FILE"
@@ -172,11 +174,33 @@ echo "프론트 배포 및 health check 성공"
 REMOTE_SCRIPT
   then
     ssh "${ssh_options[@]}" "$target" docker logout ghcr.io >/dev/null 2>&1 || true
-    fail "배포 실패: $target"
+    log "ERROR: 배포 실패: $target"
+    return 1
   fi
 
   ssh "${ssh_options[@]}" "$target" docker logout ghcr.io >/dev/null 2>&1 || true
   log "배포 완료: $target"
+}
+
+# 등록된 모든 프론트 호스트의 배포를 동시에 시작한다.
+pids=()
+pid_hosts=()
+
+for host in "${hosts[@]}"; do
+  deploy_host "$host" &
+  pids+=("$!")
+  pid_hosts+=("$host")
 done
+
+failed_hosts=()
+for index in "${!pids[@]}"; do
+  if ! wait "${pids[$index]}"; then
+    failed_hosts+=("${pid_hosts[$index]}")
+  fi
+done
+
+if [[ "${#failed_hosts[@]}" -gt 0 ]]; then
+  fail "배포 실패 호스트: ${failed_hosts[*]}"
+fi
 
 log "모든 프론트 서버가 동일한 digest로 배포되었습니다: $resolved_image"

@@ -11,7 +11,7 @@ on:
         default: test
         type: string
 
-# 동시에 두 프론트 배포가 실행되어 서로의 컨테이너를 교체하지 않도록 직렬화한다.
+# 프론트 병렬 배포 작업끼리 겹치지 않도록 워크플로는 한 번에 하나만 실행한다.
 concurrency:
   group: frontend-deploy-test
   cancel-in-progress: false
@@ -51,7 +51,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy sequentially
+      - name: Deploy all frontend hosts in parallel
         id: deploy
         shell: bash
         env:

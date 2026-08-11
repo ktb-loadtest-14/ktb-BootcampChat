@@ -10,7 +10,7 @@ on:
         default: test
         type: string
 
-# 순차 배포가 겹치지 않도록 백엔드 배포는 한 번에 하나만 실행한다.
+# 백엔드 병렬 배포 작업끼리 겹치지 않도록 워크플로는 한 번에 하나만 실행한다.
 concurrency:
   group: backend-deploy-test
   cancel-in-progress: false
@@ -50,7 +50,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy sequentially
+      - name: Deploy all backend hosts in parallel
         id: deploy
         shell: bash
         env:
