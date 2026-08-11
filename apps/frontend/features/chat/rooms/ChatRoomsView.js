@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   ErrorCircleIcon,
   NetworkIcon,
@@ -31,6 +31,7 @@ const STATUS_CONFIG = {
 
 const ROOM_LIST_REFRESH_INTERVAL = 30000;
 const ROOM_LIST_VIEWPORT_HEIGHT = '430px';
+const INITIAL_RETRY_DELAYS = [750, 1500];
 
 const LoadingIndicator = ({ text }) => (
   <HStack
@@ -62,17 +63,15 @@ export default function ChatRoomsView({ router }) {
     error,
     loading,
     refreshing,
-    joiningRoom,
+    joiningRoomId,
     fetchRooms,
     refreshRooms,
     handleJoinRoom,
   } = useRoomList({
     currentUser,
     router,
-    connectionStatus,
     setConnectionStatus,
     isRetrying,
-    attemptConnection,
   });
 
   const connectionCheckTimerRef = useRef(null);
@@ -96,19 +95,23 @@ export default function ChatRoomsView({ router }) {
     let retryTimer = null;
     let cancelled = false;
 
-    const initFetch = async () => {
-      try {
-        await fetchRooms();
-      } catch (error) {
+    const initFetch = async (attempt = 0) => {
+      const loaded = await fetchRooms();
+
+      if (
+        loaded === false &&
+        attempt < INITIAL_RETRY_DELAYS.length &&
+        !cancelled
+      ) {
         retryTimer = setTimeout(() => {
           if (!cancelled) {
-            fetchRooms();
+            void initFetch(attempt + 1);
           }
-        }, 3000);
+        }, INITIAL_RETRY_DELAYS[attempt]);
       }
     };
 
-    initFetch();
+    void initFetch();
 
     return () => {
       cancelled = true;
@@ -117,6 +120,11 @@ export default function ChatRoomsView({ router }) {
       }
     };
   }, [currentUserKey, fetchRooms]);
+
+  const reconnect = useCallback(() => {
+    void attemptConnection().catch(() => {});
+    void fetchRooms();
+  }, [attemptConnection, fetchRooms]);
 
   useEffect(() => {
     if (!currentUserKey || connectionStatus !== CONNECTION_STATUS.CHECKING)
@@ -203,7 +211,7 @@ export default function ChatRoomsView({ router }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => fetchRooms()}
+                  onClick={reconnect}
                   disabled={isRetrying}
                 >
                   <RefreshOutlineIcon size={16} />
@@ -252,7 +260,7 @@ export default function ChatRoomsView({ router }) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => fetchRooms()}
+                    onClick={reconnect}
                   >
                     다시 시도
                   </Button>
@@ -269,19 +277,9 @@ export default function ChatRoomsView({ router }) {
             height: ROOM_LIST_VIEWPORT_HEIGHT,
             minHeight: ROOM_LIST_VIEWPORT_HEIGHT,
           }}
+          aria-busy={loading || refreshing}
         >
-          {connectionStatus === CONNECTION_STATUS.ERROR ? (
-            <Box
-              $css={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-              }}
-            >
-              <ConnectionErrorBanner message="채팅 서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요." />
-            </Box>
-          ) : loading ? (
+          {loading && rooms.length === 0 ? (
             <Box
               $css={{
                 display: 'flex',
@@ -295,9 +293,25 @@ export default function ChatRoomsView({ router }) {
           ) : rooms.length > 0 ? (
             <RoomsTable
               rooms={rooms}
-              connectionStatus={connectionStatus}
+              joiningRoomId={joiningRoomId}
               onJoinRoom={handleJoinRoom}
             />
+          ) : error || connectionStatus === CONNECTION_STATUS.ERROR ? (
+            <Box
+              $css={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+              }}
+            >
+              <ConnectionErrorBanner
+                message={
+                  error?.message ||
+                  '채팅 서버와 연결할 수 없습니다. 잠시 후 다시 시도해주세요.'
+                }
+              />
+            </Box>
           ) : (
             !error && (
               <VStack

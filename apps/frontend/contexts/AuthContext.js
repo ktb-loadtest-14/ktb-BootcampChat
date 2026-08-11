@@ -333,8 +333,9 @@ export const withoutAuth = (WrappedComponent) => {
       }
     }, [isAuthenticated, isLoading, router, router.isReady]);
 
-    // 로딩 중이거나 이미 로그인된 사용자인 경우 로딩 화면
-    if (isLoading || isAuthenticated) {
+    // 공개 폼은 인증 저장소 확인을 기다리지 않고 SSR부터 보여준다.
+    // 로그인 상태가 확인된 경우에만 폼을 가리고 /chat으로 이동한다.
+    if (isAuthenticated) {
       return (
         <div style={{
           display: 'flex',

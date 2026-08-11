@@ -6,6 +6,7 @@ import { CONNECTION_STATUS } from '../useServerConnection';
 
 const mocks = vi.hoisted(() => ({
   connectionStatus: 'checking',
+  rooms: [],
   error: null,
   loading: false,
   fetchRooms: vi.fn(() => Promise.resolve()),
@@ -42,12 +43,13 @@ vi.mock('../useServerConnection', async () => {
 
 vi.mock('../useRoomList', () => ({
   useRoomList: () => ({
-    rooms: [],
+    rooms: mocks.rooms,
     setRooms: vi.fn(),
     error: mocks.error,
     loading: mocks.loading,
     refreshing: false,
     joiningRoom: false,
+    joiningRoomId: null,
     fetchRooms: mocks.fetchRooms,
     refreshRooms: mocks.refreshRooms,
     handleJoinRoom: vi.fn(),
@@ -61,6 +63,7 @@ vi.mock('../useRoomsSocket', () => ({
 describe('ChatRoomsView', () => {
   beforeEach(() => {
     mocks.connectionStatus = CONNECTION_STATUS.CHECKING;
+    mocks.rooms = [];
     mocks.error = null;
     mocks.loading = false;
     mocks.fetchRooms.mockClear();
@@ -85,6 +88,19 @@ describe('ChatRoomsView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mocks.fetchRooms).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a transient initial room-list failure', async () => {
+    vi.useFakeTimers();
+    mocks.fetchRooms
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    render(<ChatRoomsView router={{ push: vi.fn() }} />);
+
+    await vi.advanceTimersByTimeAsync(750);
+
+    expect(mocks.fetchRooms).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes the room list on an interval while connected', async () => {
@@ -149,6 +165,22 @@ describe('ChatRoomsView', () => {
     });
 
     expect(screen.queryByTestId('refresh-rooms-button')).toBeNull();
+  });
+
+  it('keeps a loaded room list usable while the socket connection recovers', () => {
+    mocks.connectionStatus = CONNECTION_STATUS.ERROR;
+    mocks.rooms = [
+      {
+        _id: 'room-1',
+        name: '방 1',
+        participantsCount: 1,
+        createdAt: '2026-08-11T10:00:00Z',
+      },
+    ];
+
+    render(<ChatRoomsView router={{ push: vi.fn() }} />);
+
+    expect(screen.getByTestId('join-chat-room-button')).not.toBeDisabled();
   });
 
   it('preserves the room list height while asynchronous content is loading', () => {
