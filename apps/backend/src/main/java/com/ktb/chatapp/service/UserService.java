@@ -6,6 +6,7 @@ import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.storage.StoragePort;
+import com.ktb.chatapp.storage.StorageKey;
 import com.ktb.chatapp.util.FileUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -34,14 +36,68 @@ public class UserService {
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(
             "jpg", "jpeg", "png", "gif", "webp"
     );
+    private static final List<String> ALLOWED_PROFILE_CONTENT_TYPES = Arrays.asList(
+            "image/jpeg", "image/png", "image/gif", "image/webp"
+    );
+
+    public ProfileImageUploadPreparation prepareProfileImageUpload(
+            String email,
+            String originalFilename,
+            String contentType,
+            long size) {
+        User user = findUser(email);
+        validateProfileImageMetadata(originalFilename, contentType, size);
+
+        if (!storagePort.requiresDirectUpload()) {
+            return ProfileImageUploadPreparation.proxyUpload();
+        }
+
+        String cleanedFilename = StringUtils.cleanPath(originalFilename);
+        String safeFileName = FileUtil.generateSafeFileName(cleanedFilename);
+        String objectKey = StorageKey.profile(user.getId() + "_" + safeFileName);
+        var presignedUpload = storagePort.presignPut(objectKey, contentType, size)
+                .orElseThrow(() -> new IllegalStateException("직접 업로드 URL을 발급할 수 없습니다."));
+
+        return new ProfileImageUploadPreparation(
+                true,
+                objectKey,
+                fileUrl.of(objectKey),
+                presignedUpload);
+    }
+
+    public ProfileImageResponse completeProfileImageUpload(String email, String objectKey) {
+        User user = findUser(email);
+        if (!storagePort.requiresDirectUpload()) {
+            throw new IllegalStateException("로컬 저장 모드에서는 직접 업로드 완료 API를 사용할 수 없습니다.");
+        }
+
+        String expectedPrefix = StorageKey.profile(user.getId() + "_");
+        String generatedFileName = objectKey != null && objectKey.startsWith(expectedPrefix)
+                ? objectKey.substring(expectedPrefix.length())
+                : "";
+        if (!FileUtil.isValidFilename(generatedFileName)) {
+            throw new IllegalArgumentException("유효하지 않은 프로필 이미지 key입니다.");
+        }
+
+        String oldProfileImage = user.getProfileImage();
+        user.setProfileImage(objectKey);
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        if (oldProfileImage != null && !oldProfileImage.isEmpty() && !oldProfileImage.equals(objectKey)) {
+            deleteOldProfileImage(oldProfileImage);
+        }
+
+        log.info("프로필 이미지 직접 업로드 완료 - User ID: {}, Key: {}", user.getId(), objectKey);
+        return ProfileImageResponse.updated(objectKey, fileUrl);
+    }
 
     /**
      * 현재 사용자 프로필 조회
      * @param email 사용자 이메일
      */
     public UserResponse getCurrentUserProfile(String email) {
-        User user = userRepository.findByEmail(email.toLowerCase())
-                .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
+        User user = findUser(email);
         return UserResponse.from(user, fileUrl);
     }
 
@@ -111,19 +167,25 @@ public class UserService {
             throw new IllegalArgumentException("이미지가 제공되지 않았습니다.");
         }
 
+        validateProfileImageMetadata(file.getOriginalFilename(), file.getContentType(), file.getSize());
+    }
+
+    private void validateProfileImageMetadata(String originalFilename, String contentType, long size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("이미지가 제공되지 않았습니다.");
+        }
+
         // 파일 크기 검증
-        if (file.getSize() > maxProfileImageSize) {
+        if (size > maxProfileImageSize) {
             throw new IllegalArgumentException("파일 크기는 5MB를 초과할 수 없습니다.");
         }
 
         // Content-Type 검증
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
+        if (contentType == null || !ALLOWED_PROFILE_CONTENT_TYPES.contains(contentType)) {
             throw new IllegalArgumentException("이미지 파일만 업로드할 수 있습니다.");
         }
 
         // 파일 확장자 검증 (보안을 위해 화이트리스트 유지)
-        String originalFilename = file.getOriginalFilename();
         if (originalFilename == null) {
             throw new IllegalArgumentException("이미지 파일만 업로드할 수 있습니다.");
         }
@@ -133,6 +195,11 @@ public class UserService {
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             throw new IllegalArgumentException("이미지 파일만 업로드할 수 있습니다.");
         }
+    }
+
+    private User findUser(String email) {
+        return userRepository.findByEmail(email.toLowerCase())
+                .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
     }
 
     /**

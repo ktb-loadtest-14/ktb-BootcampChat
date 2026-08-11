@@ -56,7 +56,7 @@ const Register = () => {
       setLoading(false);
       
       setTimeout(() => {
-        router.push('/login');
+        router.push('/');
       }, 1000);
     } catch (err) {
       setError(err.message || '회원가입 처리 중 오류가 발생했습니다.');
@@ -77,7 +77,14 @@ const Register = () => {
         render={<Form onSubmit={handleSubmit} />}
       >
         <div className="text-center mb-4">
-          <img src="images/logo-h.png" className="w-1/2 mx-auto" alt="KTB Chat 로고" />
+          <img
+            src="/images/logo-h.png"
+            width="439"
+            height="220"
+            fetchPriority="high"
+            className="w-1/2 h-auto mx-auto"
+            alt="KTB Chat 로고"
+          />
         </div>
 
         {error && (

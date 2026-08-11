@@ -136,4 +136,31 @@ describe('api client', () => {
       },
     });
   });
+
+  it('allows latency-sensitive requests to disable the shared retry loop', async () => {
+    const client = createApiClient({
+      baseURL: 'http://api.test',
+      getSession: () => null,
+    });
+    let requestCount = 0;
+
+    client.defaults.adapter = async (config) => {
+      requestCount += 1;
+      const error = new Error('Gateway timeout');
+      error.config = config;
+      error.response = {
+        config,
+        data: {},
+        headers: {},
+        status: 504,
+        statusText: 'Gateway Timeout',
+      };
+      throw error;
+    };
+
+    await expect(
+      client.get('/api/rooms', { maxRetries: 0 })
+    ).rejects.toMatchObject({ status: 504 });
+    expect(requestCount).toBe(1);
+  });
 });

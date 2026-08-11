@@ -11,7 +11,6 @@ import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.*;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
-import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.util.BannedWordChecker;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
@@ -42,7 +41,6 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 public class ChatMessageHandler {
     private final SocketIOServer socketIOServer;
     private final MessageRepository messageRepository;
-    private final RoomRepository roomRepository;
     private final UserRepository userRepository;
     private final FileRepository fileRepository;
     private final AiService aiService;
@@ -124,8 +122,9 @@ public class ChatMessageHandler {
             }
 
             String roomId = data.getRoom();
-            Room room = roomRepository.findById(roomId).orElse(null);
-            if (room == null || !room.getParticipantIds().contains(socketUser.id())) {
+            // joinRoom 핸들러의 검증을 통과한 소켓만 채팅방 membership을 가진다.
+            // 메시지마다 rooms 컬렉션을 다시 조회하지 않고 현재 연결의 membership으로 권한을 확인한다.
+            if (roomId == null || !client.getAllRooms().contains(roomId)) {
                 recordError("room_access_denied");
                 client.sendEvent(ERROR, Map.of(
                     "code", "MESSAGE_ERROR",
@@ -201,7 +200,7 @@ public class ChatMessageHandler {
         String fileId = (String) fileData.get("_id");
         File file = fileRepository.findById(fileId).orElse(null);
 
-        if (file == null || !file.getUser().equals(userId)) {
+        if (file == null || !file.getUser().equals(userId) || !file.isUploadReady()) {
             throw new IllegalStateException("파일을 찾을 수 없거나 접근 권한이 없습니다.");
         }
 

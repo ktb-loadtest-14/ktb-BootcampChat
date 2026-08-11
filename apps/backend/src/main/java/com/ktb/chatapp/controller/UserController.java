@@ -1,10 +1,13 @@
 package com.ktb.chatapp.controller;
 
 import com.ktb.chatapp.dto.StandardResponse;
+import com.ktb.chatapp.dto.CompleteProfileImageUploadRequest;
 import com.ktb.chatapp.dto.ProfileImageResponse;
+import com.ktb.chatapp.dto.UploadUrlRequest;
 import com.ktb.chatapp.dto.UpdateProfileRequest;
 import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.service.UserService;
+import com.ktb.chatapp.service.ProfileImageUploadPreparation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -28,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.security.Principal;
+import java.util.HashMap;
+import java.util.Map;
 
 @Tag(name = "사용자 (Users)", description = "사용자 프로필 관리 API - 프로필 조회, 수정, 이미지 업로드, 회원 탈퇴")
 @RequiredArgsConstructor
@@ -103,6 +108,56 @@ public class UserController {
     /**
      * 프로필 이미지 업로드
      */
+    @Operation(summary = "프로필 이미지 업로드 URL 발급", description = "S3 PUT용 Presigned URL을 발급합니다.")
+    @PostMapping("/profile-image/upload-url")
+    public ResponseEntity<?> createProfileImageUploadUrl(
+            Principal principal,
+            @Valid @RequestBody UploadUrlRequest request) {
+        try {
+            ProfileImageUploadPreparation preparation = userService.prepareProfileImageUpload(
+                    principal.getName(), request.filename(), request.contentType(), request.size());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("directUpload", preparation.directUpload());
+            if (preparation.directUpload()) {
+                response.put("uploadUrl", preparation.presignedUpload().url().toString());
+                response.put("requiredHeaders", preparation.presignedUpload().requiredHeaders());
+                response.put("expiresAt", preparation.presignedUpload().expiresAt());
+                response.put("objectKey", preparation.objectKey());
+                response.put("imageUrl", preparation.imageUrl());
+            }
+            return ResponseEntity.ok(response);
+        } catch (UsernameNotFoundException e) {
+            return ResponseEntity.status(404).body(StandardResponse.error("사용자를 찾을 수 없습니다."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(StandardResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("프로필 이미지 업로드 URL 발급 중 오류 발생", e);
+            return ResponseEntity.internalServerError()
+                    .body(StandardResponse.error("이미지 업로드 URL 발급 중 오류가 발생했습니다."));
+        }
+    }
+
+    @Operation(summary = "프로필 이미지 업로드 완료", description = "직접 업로드한 프로필 이미지를 사용자에게 반영합니다.")
+    @PostMapping("/profile-image/complete")
+    public ResponseEntity<?> completeProfileImageUpload(
+            Principal principal,
+            @Valid @RequestBody CompleteProfileImageUploadRequest request) {
+        try {
+            return ResponseEntity.ok(userService.completeProfileImageUpload(
+                    principal.getName(), request.objectKey()));
+        } catch (UsernameNotFoundException e) {
+            return ResponseEntity.status(404).body(StandardResponse.error("사용자를 찾을 수 없습니다."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(StandardResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("프로필 이미지 업로드 완료 처리 중 오류 발생", e);
+            return ResponseEntity.internalServerError()
+                    .body(StandardResponse.error("이미지 업로드 완료 처리 중 오류가 발생했습니다."));
+        }
+    }
+
     @Operation(summary = "프로필 이미지 업로드", description = "프로필 이미지를 업로드합니다. 최대 5MB까지 가능합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "이미지 업로드 성공",
