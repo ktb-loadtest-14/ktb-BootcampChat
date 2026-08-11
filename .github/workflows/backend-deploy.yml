@@ -1,0 +1,81 @@
+name: Backend Deploy
+
+# 실행할 때 Branch 드롭다운에서 test를 선택하면 test의 스크립트로 배포한다.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "배포할 GHCR 태그 (최신: test, 특정 버전/롤백: sha-...)"
+        required: true
+        default: test
+        type: string
+
+# 순차 배포가 겹치지 않도록 백엔드 배포는 한 번에 하나만 실행한다.
+concurrency:
+  group: backend-deploy-test
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Deploy backend
+    runs-on: [self-hosted, linux, x64, deploy]
+    timeout-minutes: 90
+
+    steps:
+      - name: Allow only test branch
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/test" ]]; then
+            echo "Run workflow의 Branch에서 test를 선택해야 합니다."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-backend" >> "$GITHUB_OUTPUT"
+
+      # Runner에서 태그를 한 번만 조회한 뒤 스크립트가 digest로 고정한다.
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy sequentially
+        id: deploy
+        shell: bash
+        env:
+          DEPLOY_HOSTS: ${{ vars.BACKEND_HOSTS }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          SSH_KEY_PATH: ${{ vars.DEPLOY_SSH_KEY_PATH }}
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKEND_ENV_FILE: ${{ vars.BACKEND_ENV_FILE }}
+        run: ./scripts/deploy-backend.sh
+
+      - name: Write deployment summary
+        if: always()
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+          RESOLVED_IMAGE: ${{ steps.deploy.outputs.resolved_image }}
+          DEPLOY_RESULT: ${{ steps.deploy.outcome }}
+        run: |
+          {
+            echo "### Backend deployment"
+            echo
+            printf -- '- Requested tag: `%s`\n' "$REQUESTED_TAG"
+            printf -- '- Resolved image: `%s`\n' "${RESOLVED_IMAGE:-digest 확인 전 실패}"
+            printf -- '- Result: `%s`\n' "$DEPLOY_RESULT"
+          } >> "$GITHUB_STEP_SUMMARY"
