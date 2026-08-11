@@ -29,6 +29,7 @@ class RoomServiceBatchQueryTest {
     @Mock private RoomRepository roomRepository;
     @Mock private UserRepository userRepository;
     @Mock private RecentMessageCounter recentMessageCounter;
+    @Mock private RoomParticipantPresenceService roomParticipantPresenceService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -53,6 +54,8 @@ class RoomServiceBatchQueryTest {
                 .build();
 
         when(roomRepository.findAll()).thenReturn(List.of(room));
+        when(roomParticipantPresenceService.getParticipantIds(room))
+                .thenReturn(room.getParticipantIds());
         when(userRepository.findAllById(any())).thenReturn(List.of(creator, participant));
         when(recentMessageCounter.countRecentMessagesByRoomIds(List.of(room.getId())))
                 .thenReturn(Map.of(room.getId(), 3));
@@ -61,6 +64,7 @@ class RoomServiceBatchQueryTest {
                 roomRepository,
                 userRepository,
                 recentMessageCounter,
+                roomParticipantPresenceService,
                 passwordEncoder,
                 eventPublisher);
 
