@@ -6,6 +6,8 @@ const additionalDevOrigins = (process.env.DEV_ALLOWED_ORIGINS || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const publicDocumentCacheControl = 'public, max-age=0, s-maxage=60, stale-while-revalidate=30';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -24,7 +26,21 @@ const nextConfig = {
   // Docker 빌드를 위한 standalone 출력 모드 (개발 환경에는 영향 없음)
   output: 'standalone',
   // monorepo에서 standalone 빌드 시 중첩 경로 방지
-  outputFileTracingRoot: workspaceRoot
+  outputFileTracingRoot: workspaceRoot,
+  // 로그인과 회원가입 HTML은 빌드 시 생성되는 비개인화 정적 문서다. 브라우저에는 저장하지
+  // 않고 공유 프록시에서만 짧게 재사용해 동시 접속 시 Next 프로세스의 문서 응답 tail을 줄인다.
+  async headers() {
+    return [
+      {
+        source: '/',
+        headers: [{ key: 'Cache-Control', value: publicDocumentCacheControl }],
+      },
+      {
+        source: '/register',
+        headers: [{ key: 'Cache-Control', value: publicDocumentCacheControl }],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

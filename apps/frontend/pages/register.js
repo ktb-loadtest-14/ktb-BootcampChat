@@ -1,20 +1,11 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/router';
-import { ErrorCircleIcon, CheckCircleIcon } from '@vapor-ui/icons';
-import {
-    Box,
-    Button,
-    Callout,
-    Field,
-    Form,
-    HStack,
-    Text,
-    TextInput,
-    VStack,
-} from '@vapor-ui/core';
 import { useAuth, withoutAuth } from '@/contexts/AuthContext';
+import useIsHydrated from '@/hooks/useIsHydrated';
+import styles from '../styles/Register.module.css';
 
 const Register = () => {
+  const isHydrated = useIsHydrated();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -26,6 +17,7 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { register: registerContext } = useAuth();
+  const interactionDisabled = !isHydrated || loading;
 
   const validateForm = () => {
     // 비밀번호 일치 확인만 추가 검증 (나머지는 HTML5 폼 검증)
@@ -65,165 +57,144 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-[var(--vapor-space-300)] bg-[var(--vapor-color-background)]">
-      <VStack
-        $css={{
-          gap: '$250',
-          width: '400px',
-          padding: '$300',
-          borderRadius: '$300',
-          border: '1px solid var(--vapor-color-border-normal)',
-        }}
-        render={<Form onSubmit={handleSubmit} />}
+    <main
+      className={styles.page}
+      data-testid="register-page"
+      data-hydrated={isHydrated ? 'true' : 'false'}
+      aria-busy={interactionDisabled}
+    >
+      <form
+        className={styles.form}
+        onSubmit={handleSubmit}
       >
-        <div className="text-center mb-4">
-          <img
-            src="/images/logo-h.png"
-            width="439"
-            height="220"
-            fetchPriority="high"
-            className="w-1/2 h-auto mx-auto"
-            alt="KTB Chat 로고"
-          />
-        </div>
+        <img
+          src="/images/logo-h.png"
+          width="439"
+          height="220"
+          fetchPriority="high"
+          className={styles.logo}
+          alt="KTB Chat 로고"
+        />
 
         {error && (
-          <Callout.Root colorPalette="warning" data-testid="register-error-message">
-            <Callout.Icon>
-              <ErrorCircleIcon />
-            </Callout.Icon>
+          <div
+            className={`${styles.callout} ${styles.warning}`}
+            role="alert"
+            data-testid="register-error-message"
+          >
             {error}
-          </Callout.Root>
+          </div>
         )}
 
         {success && (
-          <Callout.Root colorPalette="success" data-testid="register-success-message">
-            <Callout.Icon>
-              <CheckCircleIcon />
-            </Callout.Icon>
+          <div
+            className={`${styles.callout} ${styles.success}`}
+            role="status"
+            data-testid="register-success-message"
+          >
             가입성공, 로그인 해 주세요.
-          </Callout.Root>
+          </div>
         )}
 
-        <VStack $css={{ gap: '$400' }}>
-          <VStack $css={{ gap: '$200' }}>
-            <Field.Root>
-              <Box
-                render={<Field.Label />}
-                $css={{ flexDirection: 'column' }}
-                style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}
-              >
-                이름
-                <TextInput
-                  id="register-name"
-                  size="lg"
-                  type="text"
-                  required
-                  disabled={loading}
-                  value={formData.name}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, name: value }))}
-                  placeholder="이름을 입력하세요"
-                  data-testid="register-name-input"
-                />
-              </Box>
-              <Field.Error match="valueMissing">이름을 입력해주세요.</Field.Error>
-            </Field.Root>
+        <div className={styles.actions}>
+          <div className={styles.fields}>
+            <label className={styles.field} htmlFor="register-name">
+              <span className={styles.label}>이름</span>
+              <input
+                className={styles.input}
+                id="register-name"
+                name="name"
+                type="text"
+                required
+                disabled={interactionDisabled}
+                value={formData.name}
+                onChange={(event) => setFormData(prev => ({ ...prev, name: event.target.value }))}
+                placeholder="이름을 입력하세요"
+                autoComplete="name"
+                data-testid="register-name-input"
+              />
+            </label>
 
-            <Field.Root>
-              <Box
-                render={<Field.Label />}
-                $css={{ flexDirection: 'column' }}
-                style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}
-              >
-                이메일
-                <TextInput
-                  id="register-email"
-                  size="lg"
-                  type="email"
-                  required
-                  disabled={loading}
-                  value={formData.email}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, email: value }))}
-                  placeholder="이메일을 입력하세요"
-                  data-testid="register-email-input"
-                />
-              </Box>
-              <Field.Error match="valueMissing">이메일을 입력해주세요.</Field.Error>
-              <Field.Error match="typeMismatch">유효한 이메일 형식이 아닙니다.</Field.Error>
-            </Field.Root>
+            <label className={styles.field} htmlFor="register-email">
+              <span className={styles.label}>이메일</span>
+              <input
+                className={styles.input}
+                id="register-email"
+                name="email"
+                type="email"
+                required
+                disabled={interactionDisabled}
+                value={formData.email}
+                onChange={(event) => setFormData(prev => ({ ...prev, email: event.target.value }))}
+                placeholder="이메일을 입력하세요"
+                autoComplete="email"
+                data-testid="register-email-input"
+              />
+            </label>
 
-            <Field.Root>
-              <Box
-                render={<Field.Label />}
-                $css={{ flexDirection: 'column' }}
-                style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}
-              >
-                비밀번호
-                <TextInput
-                  id="register-password"
-                  size="lg"
-                  type="password"
-                  required
-                  disabled={loading}
-                  value={formData.password}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, password: value }))}
-                  placeholder="비밀번호를 입력하세요"
-                  pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,16}"
-                  data-testid="register-password-input"
-                />
-              </Box>
-              <Field.Description>8~16자, 대소문자 영문, 숫자, 특수문자 포함</Field.Description>
-              <Field.Error match="valueMissing">비밀번호를 입력해주세요.</Field.Error>
-              <Field.Error match="patternMismatch">유효한 비밀번호 형식이 아닙니다.</Field.Error>
-            </Field.Root>
+            <label className={styles.field} htmlFor="register-password">
+              <span className={styles.label}>비밀번호</span>
+              <input
+                className={styles.input}
+                id="register-password"
+                name="password"
+                type="password"
+                required
+                disabled={interactionDisabled}
+                value={formData.password}
+                onChange={(event) => setFormData(prev => ({ ...prev, password: event.target.value }))}
+                placeholder="비밀번호를 입력하세요"
+                pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,16}"
+                autoComplete="new-password"
+                aria-describedby="register-password-description"
+                data-testid="register-password-input"
+              />
+              <p id="register-password-description" className={styles.description}>
+                8~16자, 대소문자 영문, 숫자, 특수문자 포함
+              </p>
+            </label>
 
-            <Field.Root>
-              <Box
-                render={<Field.Label />}
-                $css={{ flexDirection: 'column' }}
-                style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}
-              >
-                비밀번호 확인
-                <TextInput
-                  id="register-password-confirm"
-                  size="lg"
-                  type="password"
-                  required
-                  disabled={loading}
-                  value={formData.confirmPassword}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, confirmPassword: value }))}
-                  placeholder="비밀번호를 다시 입력하세요"
-                  data-testid="register-password-confirm-input"
-                />
-              </Box>
-              <Field.Error match="valueMissing">비밀번호 확인을 입력해주세요.</Field.Error>
-            </Field.Root>
-          </VStack>
+            <label className={styles.field} htmlFor="register-password-confirm">
+              <span className={styles.label}>비밀번호 확인</span>
+              <input
+                className={styles.input}
+                id="register-password-confirm"
+                name="confirmPassword"
+                type="password"
+                required
+                disabled={interactionDisabled}
+                value={formData.confirmPassword}
+                onChange={(event) => setFormData(prev => ({ ...prev, confirmPassword: event.target.value }))}
+                placeholder="비밀번호를 다시 입력하세요"
+                autoComplete="new-password"
+                data-testid="register-password-confirm-input"
+              />
+            </label>
+          </div>
 
-          <Button
+          <button
+            className={`${styles.button} ${styles.submitButton}`}
             type="submit"
-            size="lg"
-            disabled={loading}
+            disabled={interactionDisabled}
             data-testid="register-submit-button"
           >
             {loading ? '회원가입 중...' : '회원가입'}
-          </Button>
-        </VStack>
+          </button>
+        </div>
 
-        <HStack $css={{ justifyContent: 'center' }}>
-          <Text typography="body2">이미 계정이 있으신가요?</Text>
-          <Button
+        <div className={styles.footer}>
+          <span>이미 계정이 있으신가요?</span>
+          <button
+            className={`${styles.button} ${styles.linkButton}`}
             type="button"
-            size="sm"
-            variant="ghost"
             onClick={() => router.push('/')}
-            disabled={loading}
+            disabled={interactionDisabled}
           >
             로그인
-          </Button>
-        </HStack>
-      </VStack>
-    </div>
+          </button>
+        </div>
+      </form>
+    </main>
   );
 };
 

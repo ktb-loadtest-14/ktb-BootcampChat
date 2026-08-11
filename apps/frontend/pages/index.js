@@ -1,7 +1,8 @@
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import { ErrorCircleIcon } from '@vapor-ui/icons';
 import { withoutAuth, useAuth } from '@/contexts/AuthContext';
+import useIsHydrated from '@/hooks/useIsHydrated';
 import {
     Box,
     Button,
@@ -13,16 +14,6 @@ import {
     TextInput,
     VStack,
 } from '@vapor-ui/core';
-
-const subscribeToHydration = () => () => {};
-const getClientHydrationSnapshot = () => true;
-const getServerHydrationSnapshot = () => false;
-
-const useIsHydrated = () => useSyncExternalStore(
-  subscribeToHydration,
-  getClientHydrationSnapshot,
-  getServerHydrationSnapshot
-);
 
 const Login = () => {
   const isHydrated = useIsHydrated();
