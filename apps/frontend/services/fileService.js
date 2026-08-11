@@ -4,23 +4,20 @@ import { Toast } from '../components/Toast';
 
 class FileService {
   constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL;
-    this.uploadLimit = 50 * 1024 * 1024; // 50MB
-    this.retryAttempts = 3;
-    this.retryDelay = 1000;
+    this.uploadLimit = 5 * 1024 * 1024; // 백엔드 정책과 동일한 5MB
     this.activeUploads = new Map();
 
     this.allowedTypes = {
       image: {
         extensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
         mimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-        maxSize: 10 * 1024 * 1024,
+        maxSize: 5 * 1024 * 1024,
         name: '이미지'
       },
       document: {
         extensions: ['.pdf'],
         mimeTypes: ['application/pdf'],
-        maxSize: 20 * 1024 * 1024,
+        maxSize: 5 * 1024 * 1024,
         name: 'PDF 문서'
       }
     };
@@ -74,42 +71,42 @@ class FileService {
     return { success: true };
   }
 
-  async uploadFile(file, onProgress, token, sessionId) {
+  async uploadFile(file, onProgress) {
     const validationResult = await this.validateFile(file);
     if (!validationResult.success) {
       return validationResult;
     }
 
+    const source = CancelToken.source();
+    this.activeUploads.set(file.name, source);
+
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const source = CancelToken.source();
-      this.activeUploads.set(file.name, source);
-
-      const uploadUrl = this.baseUrl ?
-        `${this.baseUrl}/api/files/upload` :
-        '/api/files/upload';
-
-      // token과 sessionId는 axios 인터셉터에서 자동으로 추가되므로
-      // 여기서는 명시적으로 전달하지 않아도 됩니다
-      const response = await axiosInstance.post(uploadUrl, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
-        // 업로드는 한도가 50MB 라 공통 타임아웃으로는 정상 전송도 끊긴다.
-        timeout: 30000,
+      const preparation = await axiosInstance.post('/api/files/upload-url', {
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+      }, {
         cancelToken: source.token,
-        withCredentials: true,
-        onUploadProgress: (progressEvent) => {
-          if (onProgress) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            onProgress(percentCompleted);
-          }
-        }
       });
+
+      let response;
+      if (preparation.data?.directUpload) {
+        const pendingFile = preparation.data.file;
+        await this.putToPresignedUrl(
+          preparation.data.uploadUrl,
+          file,
+          preparation.data.requiredHeaders,
+          source.token,
+          onProgress
+        );
+        response = await axiosInstance.post(
+          `/api/files/uploads/${encodeURIComponent(pendingFile._id)}/complete`,
+          {},
+          { cancelToken: source.token }
+        );
+      } else {
+        response = await this.uploadThroughBackend(file, source.token, onProgress);
+      }
 
       this.activeUploads.delete(file.name);
 
@@ -149,6 +146,75 @@ class FileService {
       return this.handleUploadError(error);
     }
   }
+
+  async uploadThroughBackend(file, cancelToken, onProgress) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return axiosInstance.post('/api/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+      cancelToken,
+      withCredentials: true,
+      onUploadProgress: (progressEvent) => {
+        if (onProgress) {
+          const total = progressEvent.total || file.size;
+          onProgress(Math.round((progressEvent.loaded * 100) / total));
+        }
+      }
+    });
+  }
+
+  async putToPresignedUrl(uploadUrl, file, requiredHeaders, cancelToken, onProgress) {
+    return axios.put(uploadUrl, file, {
+      headers: requiredHeaders || { 'Content-Type': file.type },
+      timeout: 30000,
+      cancelToken,
+      onUploadProgress: (progressEvent) => {
+        if (onProgress) {
+          const total = progressEvent.total || file.size;
+          onProgress(Math.round((progressEvent.loaded * 100) / total));
+        }
+      }
+    });
+  }
+
+  async uploadProfileImage(file, onProgress) {
+    const preparation = await axiosInstance.post('/api/users/profile-image/upload-url', {
+      filename: file.name,
+      contentType: file.type,
+      size: file.size,
+    });
+
+    if (!preparation.data?.directUpload) {
+      const formData = new FormData();
+      formData.append('profileImage', file);
+      const response = await axiosInstance.post('/api/users/profile-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000,
+        onUploadProgress: (progressEvent) => {
+          if (onProgress) {
+            const total = progressEvent.total || file.size;
+            onProgress(Math.round((progressEvent.loaded * 100) / total));
+          }
+        }
+      });
+      return response.data;
+    }
+
+    await this.putToPresignedUrl(
+      preparation.data.uploadUrl,
+      file,
+      preparation.data.requiredHeaders,
+      undefined,
+      onProgress
+    );
+    const response = await axiosInstance.post('/api/users/profile-image/complete', {
+      objectKey: preparation.data.objectKey,
+    });
+    return response.data;
+  }
+
   getFileUrl(fileOrFilename, forPreview = false) {
     const directUrl = typeof fileOrFilename === 'object' ? fileOrFilename?.url : '';
     if (directUrl) {

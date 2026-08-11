@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
@@ -17,12 +18,15 @@ import com.ktb.chatapp.service.FileAccess;
 import com.ktb.chatapp.service.FileAccessService;
 import com.ktb.chatapp.service.FileService;
 import com.ktb.chatapp.service.FileUploadResult;
+import com.ktb.chatapp.service.FileUploadPreparation;
 import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.service.PreviewNotSupportedException;
 import com.ktb.chatapp.service.RateLimitService;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,9 +36,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.ktb.chatapp.storage.PresignedUpload;
 
 /**
  * {@code /api/files} 읽기 경로의 HTTP 표면을 고정한다. {@link FileAccessService}가 조립한
@@ -112,6 +118,61 @@ class FileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.file.filename").value(FILE_NAME))
                 .andExpect(jsonPath("$.file.url").value("/api/files/view/" + FILE_NAME));
+    }
+
+    @Test
+    @DisplayName("S3 업로드 URL 발급 → PUT URL과 CloudFront 조회 URL을 함께 반환한다")
+    void createUploadUrl_s3_returnsPresignedPutAndCdnUrl() throws Exception {
+        var pendingFile = com.ktb.chatapp.model.File.builder()
+                .id("file-1")
+                .filename(FILE_NAME)
+                .originalname(ORIGINAL_NAME)
+                .mimetype("image/png")
+                .size(11L)
+                .path("chat/" + FILE_NAME)
+                .user(USER_ID)
+                .uploadCompleted(false)
+                .build();
+        var presigned = new PresignedUpload(
+                URI.create("https://bucket.s3.amazonaws.com/chat/" + FILE_NAME + "?sig=stub"),
+                Map.of("Content-Type", "image/png"),
+                Instant.parse("2030-01-01T00:05:00Z"));
+        when(fileService.prepareUpload(ORIGINAL_NAME, "image/png", 11L, USER_ID))
+                .thenReturn(FileUploadPreparation.direct(pendingFile, presigned));
+        when(fileUrl.of("chat/" + FILE_NAME))
+                .thenReturn("https://cdn.example.test/chat/" + FILE_NAME);
+
+        mockMvc.perform(post("/api/files/upload-url")
+                        .principal(PRINCIPAL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"filename":"여행 사진.png","contentType":"image/png","size":11}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.directUpload").value(true))
+                .andExpect(jsonPath("$.uploadUrl").value(
+                        "https://bucket.s3.amazonaws.com/chat/" + FILE_NAME + "?sig=stub"))
+                .andExpect(jsonPath("$['requiredHeaders']['Content-Type']").value("image/png"))
+                .andExpect(jsonPath("$.file._id").value("file-1"))
+                .andExpect(jsonPath("$.file.url").value(
+                        "https://cdn.example.test/chat/" + FILE_NAME));
+    }
+
+    @Test
+    @DisplayName("로컬 저장 모드 업로드 준비 → multipart fallback을 지시한다")
+    void createUploadUrl_local_returnsProxyFallback() throws Exception {
+        when(fileService.prepareUpload(ORIGINAL_NAME, "image/png", 11L, USER_ID))
+                .thenReturn(FileUploadPreparation.proxyUpload());
+
+        mockMvc.perform(post("/api/files/upload-url")
+                        .principal(PRINCIPAL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"filename":"여행 사진.png","contentType":"image/png","size":11}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.directUpload").value(false))
+                .andExpect(jsonPath("$.uploadUrl").doesNotExist());
     }
 
     @Test

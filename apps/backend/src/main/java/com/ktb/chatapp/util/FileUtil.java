@@ -51,21 +51,28 @@ public class FileUtil {
             throw new RuntimeException("파일이 비어있습니다.");
         }
 
-        String originalFilename = file.getOriginalFilename();
+        validateFileMetadata(file.getOriginalFilename(), file.getContentType(), file.getSize());
+    }
+
+    /** Presigned URL을 발급하기 전에 파일명, MIME 타입, 크기를 검증한다. */
+    public static void validateFileMetadata(String originalFilename, String contentType, long size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("파일이 비어있습니다.");
+        }
+
         if (originalFilename == null || originalFilename.trim().isEmpty()) {
-            throw new RuntimeException("파일명이 올바르지 않습니다.");
+            throw new IllegalArgumentException("파일명이 올바르지 않습니다.");
         }
 
         // 파일명 길이 검증 (UTF-8 바이트 기준 255바이트)
         int filenameBytes = originalFilename.getBytes(StandardCharsets.UTF_8).length;
         if (filenameBytes > 255) {
-            throw new RuntimeException("파일명이 너무 깁니다.");
+            throw new IllegalArgumentException("파일명이 너무 깁니다.");
         }
 
         // MIME 타입 검증
-        String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_TYPES.containsKey(contentType)) {
-            throw new RuntimeException("지원하지 않는 파일 형식입니다.");
+            throw new IllegalArgumentException("지원하지 않는 파일 형식입니다.");
         }
 
         // 확장자-MIME 일치 검증
@@ -73,17 +80,17 @@ public class FileUtil {
         List<String> allowedExtensions = ALLOWED_TYPES.get(contentType);
         if (allowedExtensions == null || !allowedExtensions.contains(extension)) {
             String fileType = getFileType(contentType);
-            throw new RuntimeException(fileType + " 확장자가 올바르지 않습니다.");
+            throw new IllegalArgumentException(fileType + " 확장자가 올바르지 않습니다.");
         }
 
         // 타입별 크기 제한 검증
         String type = contentType.split("/")[0];
         long limit = FILE_SIZE_LIMITS.getOrDefault(type, FILE_SIZE_LIMITS.get("application"));
         
-        if (file.getSize() > limit) {
+        if (size > limit) {
             int limitInMB = (int) (limit / 1024 / 1024);
             String fileType = getFileType(contentType);
-            throw new RuntimeException(fileType + " 파일은 " + limitInMB + "MB를 초과할 수 없습니다.");
+            throw new IllegalArgumentException(fileType + " 파일은 " + limitInMB + "MB를 초과할 수 없습니다.");
         }
     }
 

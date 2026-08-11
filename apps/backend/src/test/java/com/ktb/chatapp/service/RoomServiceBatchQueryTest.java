@@ -14,6 +14,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,7 +55,8 @@ class RoomServiceBatchQueryTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        when(roomRepository.findAll()).thenReturn(List.of(room));
+        when(roomRepository.findAll(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(room)));
         when(userRepository.findAllById(any())).thenReturn(List.of(creator, participant));
         when(recentMessageCounter.countRecentMessagesByRoomIds(List.of(room.getId())))
                 .thenReturn(Map.of(room.getId(), 3));

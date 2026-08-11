@@ -200,7 +200,7 @@ public class ChatMessageHandler {
         String fileId = (String) fileData.get("_id");
         File file = fileRepository.findById(fileId).orElse(null);
 
-        if (file == null || !file.getUser().equals(userId)) {
+        if (file == null || !file.getUser().equals(userId) || !file.isUploadReady()) {
             throw new IllegalStateException("파일을 찾을 수 없거나 접근 권한이 없습니다.");
         }
 
