@@ -32,6 +32,7 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
     private final RecentMessageCounter recentMessageCounter;
+    private final RoomParticipantPresenceService roomParticipantPresenceService;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -141,6 +142,7 @@ public class RoomService {
         }
 
         Room savedRoom = roomRepository.save(room);
+        roomParticipantPresenceService.initialize(savedRoom);
         
         // Publish event for room created
         try {
@@ -174,13 +176,12 @@ public class RoomService {
             }
         }
 
-        // 참여자 목록이 담긴 Room 문서 전체를 save하면, 동시 입장 요청이
-        // 서로의 participantIds를 덮어쓸 수 있다. MongoDB의 $addToSet으로 해당
-        // 사용자만 원자적으로 추가하고, 응답과 이벤트에는 최신 문서를 사용한다.
-        roomRepository.addParticipant(roomId, user.getId());
-        room = roomRepository.findById(roomId).orElse(null);
-        if (room == null) {
-            return null;
+        Set<String> participantIds = roomParticipantPresenceService.getParticipantIds(room);
+
+        // 이미 참여중인지 확인
+        if (!participantIds.contains(user.getId())) {
+            roomParticipantPresenceService.addParticipant(roomId, user.getId());
+            room = roomRepository.findById(roomId).orElse(room);
         }
         
         // Publish event for room updated
@@ -208,9 +209,7 @@ public class RoomService {
             if (room.getCreator() != null) {
                 userIds.add(room.getCreator());
             }
-            if (room.getParticipantIds() != null) {
-                userIds.addAll(room.getParticipantIds());
-            }
+            userIds.addAll(roomParticipantPresenceService.getParticipantIds(room));
         }
 
         if (userIds.isEmpty()) {
@@ -227,7 +226,7 @@ public class RoomService {
             Map<String, User> usersById,
             int recentMessageCount) {
         User creator = usersById.get(room.getCreator());
-        List<User> participants = room.getParticipantIds().stream()
+        List<User> participants = roomParticipantPresenceService.getParticipantIds(room).stream()
                 .map(usersById::get)
                 .filter(java.util.Objects::nonNull)
                 .toList();
