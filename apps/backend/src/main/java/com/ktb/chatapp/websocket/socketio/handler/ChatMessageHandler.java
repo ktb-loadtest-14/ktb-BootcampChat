@@ -78,7 +78,7 @@ public class ChatMessageHandler {
         }
 
         SessionValidationResult validation =
-                sessionService.validateSession(socketUser.id(), socketUser.authSessionId());
+                sessionService.validateAndRefreshSession(socketUser.id(), socketUser.authSessionId());
         if (!validation.isValid()) {
             recordError("session_expired");
             client.sendEvent(ERROR, Map.of(
@@ -172,8 +172,6 @@ public class ChatMessageHandler {
 
             // AI 멘션 처리
             aiService.handleAIMentions(roomId, socketUser.id(), messageContent);
-
-            sessionService.updateLastActivity(socketUser.id());
 
             // Record success metrics
             recordMessageSuccess(messageType);

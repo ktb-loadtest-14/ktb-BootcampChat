@@ -81,7 +81,7 @@ class ChatMessageHandlerTest {
         when(client.get("user")).thenReturn(socketUser);
 
         SessionValidationResult validResult = SessionValidationResult.valid(null);
-        when(sessionService.validateSession(socketUser.id(), socketUser.authSessionId()))
+        when(sessionService.validateAndRefreshSession(socketUser.id(), socketUser.authSessionId()))
                 .thenReturn(validResult);
 
         RateLimitCheckResult allowedResult = RateLimitCheckResult.allowed(10000, 9999, 60, System.currentTimeMillis() / 1000 + 60, 60);
@@ -123,7 +123,7 @@ class ChatMessageHandlerTest {
         SocketUser socketUser = new SocketUser("user-1", "tester", "session-1", "socket-1");
         when(client.get("user")).thenReturn(socketUser);
 
-        when(sessionService.validateSession(socketUser.id(), socketUser.authSessionId()))
+        when(sessionService.validateAndRefreshSession(socketUser.id(), socketUser.authSessionId()))
                 .thenReturn(SessionValidationResult.valid(null));
         when(rateLimitService.checkRateLimit(eq(socketUser.id()), anyInt(), any()))
                 .thenReturn(RateLimitCheckResult.allowed(10000, 9999, 60, System.currentTimeMillis() / 1000 + 60, 60));
@@ -160,6 +160,7 @@ class ChatMessageHandlerTest {
         verify(client).sendEvent(eq(MESSAGE), payloadCaptor.capture());
         verify(roomOperations).sendEvent(eq(MESSAGE), any(MessageResponse.class));
         verify(roomActivityNotifier).notifyMessageStored("room-1");
+        verify(sessionService, never()).updateLastActivity(any());
         org.junit.jupiter.api.Assertions.assertEquals("message-1", payloadCaptor.getValue().getId());
         org.junit.jupiter.api.Assertions.assertEquals("hello", payloadCaptor.getValue().getContent());
     }
