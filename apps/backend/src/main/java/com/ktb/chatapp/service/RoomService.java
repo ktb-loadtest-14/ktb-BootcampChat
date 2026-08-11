@@ -326,9 +326,6 @@ public class RoomService {
                 .id(user != null && user.getId() != null ? user.getId() : fallbackId)
                 .name(user != null && user.getName() != null ? user.getName() : "알 수 없음")
                 .email(user != null && user.getEmail() != null ? user.getEmail() : "")
-                .profileImage(user != null && user.getProfileImage() != null
-                        ? FileUrl.of(user.getProfileImage())
-                        : "")
                 .build();
     }
 }
