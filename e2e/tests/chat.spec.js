@@ -420,11 +420,7 @@ test.describe('채팅 첨부 이미지', () => {
 
     // 1. 미리보기가 placeholder가 아닌 실제 첨부 URL을 가리키고, 디코딩까지 끝났는지
     const imageElement = fileMessageContainer.getByTestId('file-image-preview');
-    await expect(imageElement).toHaveAttribute(
-      'src',
-      new RegExp(`/api/files/view/${file.filename}`),
-      { timeout: 10000 }
-    );
+    expect(await imageElement.getAttribute('src')).toContain(file.url);
     await expect
       .poll(async () => (await readImageState(imageElement)).naturalWidth, { timeout: 15000 })
       .toBeGreaterThan(0);

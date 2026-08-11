@@ -20,6 +20,7 @@ import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.RateLimitCheckResult;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -50,6 +51,7 @@ public class ChatMessageHandler {
     private final BannedWordChecker bannedWordChecker;
     private final RateLimitService rateLimitService;
     private final MeterRegistry meterRegistry;
+    private final FileUrl fileUrl;
     
     @OnEvent(CHAT_MESSAGE)
     public void handleChatMessage(SocketIOClient client, ChatMessageRequest data) {
@@ -246,12 +248,12 @@ public class ChatMessageHandler {
         messageResponse.setType(message.getType());
         messageResponse.setTimestamp(message.toTimestampMillis());
         messageResponse.setReactions(message.getReactions() != null ? message.getReactions() : Collections.emptyMap());
-        messageResponse.setSender(UserResponse.from(sender));
+        messageResponse.setSender(UserResponse.from(sender, fileUrl));
         messageResponse.setMetadata(message.getMetadata());
 
         if (message.getFileId() != null) {
             fileRepository.findById(message.getFileId())
-                    .ifPresent(file -> messageResponse.setFile(FileResponse.from(file)));
+                    .ifPresent(file -> messageResponse.setFile(FileResponse.from(file, fileUrl)));
         }
 
         return messageResponse;

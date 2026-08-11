@@ -1,7 +1,8 @@
 package com.ktb.chatapp.storage;
 
 /**
- * 스토리지 key 규약: {@code profiles/<name>}(공개), {@code chat/<name>}(인가 필요).
+ * 스토리지 key 규약: {@code profiles/<name>}, {@code chat/<name>}. 공개 CDN 사용 시 두 key 모두
+ * CloudFront 읽기 URL로 노출될 수 있다.
  */
 public final class StorageKey {
 

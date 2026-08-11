@@ -8,6 +8,7 @@ import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
+import com.ktb.chatapp.service.FileUrl;
 import net.datafaker.Faker;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,7 +61,7 @@ class MessageLoaderTest {
         messageLoader = new MessageLoader(
                 messageRepository,
                 userRepository,
-                new MessageResponseMapper(fileRepository),
+                new MessageResponseMapper(fileRepository, new FileUrl("local", "")),
                 messageReadStatusService
         );
         

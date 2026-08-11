@@ -5,6 +5,7 @@ import com.ktb.chatapp.event.SessionEndedEvent;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.JwtService;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.service.SessionCreationResult;
 import com.ktb.chatapp.service.SessionMetadata;
 import com.ktb.chatapp.service.SessionService;
@@ -50,6 +51,7 @@ public class AuthController {
     private final JwtService jwtService;
     private final SessionService sessionService;
     private final ApplicationEventPublisher eventPublisher;
+    private final FileUrl fileUrl;
 
     @Operation(summary = "인증 API 상태 확인", description = "인증 API의 사용 가능한 엔드포인트 목록을 반환합니다.")
     @ApiResponses({
@@ -118,7 +120,7 @@ public class AuthController {
             LoginResponse response = LoginResponse.builder()
                     .success(true)
                     .message("회원가입이 완료되었습니다.")
-                    .user(AuthUserDto.from(user))
+                    .user(AuthUserDto.from(user, fileUrl))
                     .build();
 
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -199,7 +201,7 @@ public class AuthController {
                     .success(true)
                     .token(token)
                     .sessionId(sessionInfo.getSessionId())
-                    .user(AuthUserDto.from(user))
+                    .user(AuthUserDto.from(user, fileUrl))
                     .build();
 
             return ResponseEntity.ok()
@@ -319,7 +321,7 @@ public class AuthController {
                         .body(new TokenVerifyResponse(false, "만료된 세션입니다.", null));
             }
 
-            AuthUserDto authUserDto = AuthUserDto.from(user);
+            AuthUserDto authUserDto = AuthUserDto.from(user, fileUrl);
             return ResponseEntity.ok(new TokenVerifyResponse(true, "토큰이 유효합니다.", authUserDto));
 
         } catch (Exception e) {

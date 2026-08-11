@@ -14,6 +14,7 @@ import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.RoomParticipantPresenceService;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -44,6 +45,7 @@ public class RoomJoinHandler {
     private final MessageLoader messageLoader;
     private final MessageResponseMapper messageResponseMapper;
     private final RoomLeaveHandler roomLeaveHandler;
+    private final FileUrl fileUrl;
     
     @OnEvent(JOIN_ROOM)
     public void handleJoinRoom(SocketIOClient client, String roomId) {
@@ -108,7 +110,7 @@ public class RoomJoinHandler {
             List<UserResponse> participants = userRepository
                     .findAllById(roomParticipantPresenceService.getParticipantIds(roomOpt.get()))
                     .stream()
-                    .map(UserResponse::from)
+                    .map(user -> UserResponse.from(user, fileUrl))
                     .toList();
             
             JoinRoomSuccessResponse response = JoinRoomSuccessResponse.builder()

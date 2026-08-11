@@ -48,7 +48,11 @@ class UserServiceTest {
      */
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, fileService, new LocalStorage(uploadDir.toString()));
+        userService = new UserService(
+                userRepository,
+                fileService,
+                new LocalStorage(uploadDir.toString()),
+                new FileUrl("s3", "https://d16225pinz5a60.cloudfront.net"));
         ReflectionTestUtils.setField(userService, "maxProfileImageSize", 5242880L);
     }
 
@@ -78,7 +82,8 @@ class UserServiceTest {
 
         assertThat(Files.exists(oldFile)).isFalse();
         assertThat(user.getProfileImage()).isEqualTo("profiles/new.jpg");
-        assertThat(response.getImageUrl()).isEqualTo("/api/files/profiles/new.jpg");
+        assertThat(response.getImageUrl())
+                .isEqualTo("https://d16225pinz5a60.cloudfront.net/profiles/new.jpg");
     }
 
     @Test
