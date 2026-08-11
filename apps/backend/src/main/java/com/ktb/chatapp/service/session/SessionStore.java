@@ -1,6 +1,7 @@
 package com.ktb.chatapp.service.session;
 
 import com.ktb.chatapp.model.Session;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
@@ -24,6 +25,11 @@ public interface SessionStore {
      * @return the saved session
      */
     Session save(Session session);
+
+    /**
+     * 세션 ID가 일치할 때만 활동 시각과 만료 시각을 원자적으로 앞당긴다.
+     */
+    void touch(String userId, String sessionId, long lastActivity, Instant expiresAt);
     
     /**
      * Delete all sessions for a user

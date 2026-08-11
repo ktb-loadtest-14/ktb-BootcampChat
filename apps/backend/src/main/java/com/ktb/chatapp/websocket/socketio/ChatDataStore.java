@@ -1,6 +1,7 @@
 package com.ktb.chatapp.websocket.socketio;
 
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Data store interface for chat-related data storage.
@@ -32,6 +33,15 @@ public interface ChatDataStore {
      * @param key the storage key
      */
     void delete(String key);
+
+    /** Retrieve a defensive snapshot of a string set. */
+    Set<String> getSet(String key);
+
+    /** Add one member without replacing concurrent additions. */
+    void addToSet(String key, String value);
+
+    /** Remove one member without replacing concurrent changes. */
+    void removeFromSet(String key, String value);
     
     int size();
 }

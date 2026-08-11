@@ -6,6 +6,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.ReturnDocument;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.bson.Document;
@@ -26,7 +27,7 @@ public class RateLimitMongoStore implements RateLimitStore {
     public RateLimitConsumeResult consume(String clientId, int maxRequests, Instant now, Duration window) {
         Instant nextExpiresAt = now.plus(window);
         Document isExpired = new Document("$or", List.of(
-                new Document("$eq", List.of("$expiresAt", null)),
+                new Document("$eq", Arrays.asList("$expiresAt", null)),
                 new Document("$lte", List.of("$expiresAt", now))
         ));
         Document currentCount = new Document("$ifNull", List.of("$count", 0));
