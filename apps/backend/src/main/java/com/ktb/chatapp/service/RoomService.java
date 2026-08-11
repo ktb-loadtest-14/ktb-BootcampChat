@@ -40,7 +40,10 @@ public class RoomService {
     public RoomsResponse getAllRooms(String name) {
         try {
             List<Room> rooms = roomRepository.findAll();
-            Map<String, User> usersById = loadUsersById(rooms);
+            // 목록 조회는 이미 MongoDB에서 읽은 participantIds 스냅샷을 재사용한다.
+            // 방마다 Redis를 조회하면 빈 방이 cache miss로 남아 요청 수가 방 개수에 비례해 폭증한다.
+            Map<String, Set<String>> participantIdsByRoom = loadParticipantSnapshots(rooms);
+            Map<String, User> usersById = loadUsersById(rooms, participantIdsByRoom);
             Map<String, Integer> recentMessageCounts = loadRecentMessageCounts(rooms);
 
             // 방·사용자·최근 메시지 수를 각각 일괄 조회한 뒤 메모리에서 응답을 조립한다.
@@ -49,6 +52,7 @@ public class RoomService {
                         room,
                         name,
                         usersById,
+                        participantIdsByRoom.getOrDefault(room.getId(), Set.of()),
                         recentMessageCounts.getOrDefault(room.getId(), 0)))
                 .flatMap(Optional::stream)
                 .sorted(Comparator.comparing(
@@ -197,18 +201,25 @@ public class RoomService {
     public RoomResponse toRoomResponse(Room room, String name) {
         if (room == null) return null;
 
-        Map<String, User> usersById = loadUsersById(List.of(room));
+        Set<String> participantIds = safeParticipantIds(room);
+        Map<String, Set<String>> participantIdsByRoom = new HashMap<>();
+        if (room.getId() != null) {
+            participantIdsByRoom.put(room.getId(), participantIds);
+        }
+        Map<String, User> usersById = loadUsersById(List.of(room), participantIdsByRoom);
         int recentMessageCount = safeRecentMessageCount(room.getId());
-        return mapToRoomResponse(room, name, usersById, recentMessageCount);
+        return mapToRoomResponse(room, name, usersById, participantIds, recentMessageCount);
     }
 
-    private Map<String, User> loadUsersById(Collection<Room> rooms) {
+    private Map<String, User> loadUsersById(
+            Collection<Room> rooms,
+            Map<String, Set<String>> participantIdsByRoom) {
         Set<String> userIds = new HashSet<>();
         for (Room room : rooms) {
             if (room.getCreator() != null) {
                 userIds.add(room.getCreator());
             }
-            userIds.addAll(safeParticipantIds(room));
+            userIds.addAll(participantIdsByRoom.getOrDefault(room.getId(), Set.of()));
         }
 
         if (userIds.isEmpty()) {
@@ -223,8 +234,8 @@ public class RoomService {
             Room room,
             String name,
             Map<String, User> usersById,
+            Set<String> participantIds,
             int recentMessageCount) {
-        Set<String> participantIds = safeParticipantIds(room);
         User creator = usersById.get(room.getCreator());
         List<User> participants = participantIds.stream()
                 .map(usersById::get)
@@ -304,13 +315,34 @@ public class RoomService {
             Room room,
             String name,
             Map<String, User> usersById,
+            Set<String> participantIds,
             int recentMessageCount) {
         try {
-            return Optional.of(mapToRoomResponse(room, name, usersById, recentMessageCount));
+            return Optional.of(mapToRoomResponse(
+                    room,
+                    name,
+                    usersById,
+                    participantIds,
+                    recentMessageCount));
         } catch (RuntimeException e) {
             log.warn("방 응답 조립 실패 - roomId={}", room != null ? room.getId() : null, e);
             return Optional.empty();
         }
+    }
+
+    private Map<String, Set<String>> loadParticipantSnapshots(Collection<Room> rooms) {
+        Map<String, Set<String>> participantIdsByRoom = new HashMap<>();
+        for (Room room : rooms) {
+            if (room == null || room.getId() == null) {
+                continue;
+            }
+
+            Set<String> participantIds = room.getParticipantIds() == null
+                    ? Set.of()
+                    : new HashSet<>(room.getParticipantIds());
+            participantIdsByRoom.put(room.getId(), participantIds);
+        }
+        return participantIdsByRoom;
     }
 
     private UserResponse toUserSummary(User user) {
