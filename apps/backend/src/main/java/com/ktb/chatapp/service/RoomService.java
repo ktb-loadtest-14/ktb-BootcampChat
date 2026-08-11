@@ -240,16 +240,13 @@ public class RoomService {
                 .map(this::toUserSummary)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()))
-<<<<<<< HEAD
             .createdAtDateTime(room.getCreatedAt())
             .isCreator(creator != null
-                    && creator.getEmail() != null
-=======
+                    && creator.getEmail() != null)
             .createdAtDateTime(room.getCreatedAt() != null ? room.getCreatedAt() : LocalDateTime.now())
             .isCreator(creator != null
                     && creator.getEmail() != null
                     && name != null
->>>>>>> 537b53e (fix: harden room response fallbacks)
                     && creator.getEmail().equalsIgnoreCase(name))
             .recentMessageCount(recentMessageCount)
             .build();
