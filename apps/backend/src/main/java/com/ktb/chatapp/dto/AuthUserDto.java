@@ -21,12 +21,12 @@ public class AuthUserDto {
     private String profileImage;
 
     /** 인증 응답용 사용자 정보. 저장된 profileImage key를 응답 경계에서 URL로 조립한다. */
-    public static AuthUserDto from(User user) {
+    public static AuthUserDto from(User user, FileUrl fileUrl) {
         return new AuthUserDto(
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
-                FileUrl.of(user.getProfileImage())
+                fileUrl.of(user.getProfileImage())
         );
     }
 }

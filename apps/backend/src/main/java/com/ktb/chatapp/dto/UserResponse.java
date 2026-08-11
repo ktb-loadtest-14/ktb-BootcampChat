@@ -17,8 +17,8 @@ public class UserResponse {
     private String email;
     private String profileImage;
 
-    public static UserResponse from(User user) {
-        String profileImageUrl = FileUrl.of(user.getProfileImage());
+    public static UserResponse from(User user, FileUrl fileUrl) {
+        String profileImageUrl = fileUrl.of(user.getProfileImage());
         return UserResponse.builder()
                 .id(user.getId())
                 .name(user.getName())

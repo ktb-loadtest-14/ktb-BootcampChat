@@ -127,7 +127,7 @@ class FileService {
           ...response.data,
           file: {
             ...fileData,
-            url: this.getFileUrl(fileData.filename, true)
+            url: fileData.url || this.getFileUrl(fileData.filename, true)
           }
         }
       };
@@ -149,7 +149,17 @@ class FileService {
       return this.handleUploadError(error);
     }
   }
-  getFileUrl(filename, forPreview = false) {
+  getFileUrl(fileOrFilename, forPreview = false) {
+    const directUrl = typeof fileOrFilename === 'object' ? fileOrFilename?.url : '';
+    if (directUrl) {
+      if (/^https?:\/\//i.test(directUrl)) return directUrl;
+
+      const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+      const normalizedPath = directUrl.startsWith('/') ? directUrl : `/${directUrl}`;
+      return `${apiBaseUrl}${normalizedPath}`;
+    }
+
+    const filename = typeof fileOrFilename === 'object' ? fileOrFilename?.filename : fileOrFilename;
     if (!filename) return '';
 
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
@@ -160,14 +170,17 @@ class FileService {
   getPreviewUrl(file, token, sessionId, withAuth = true) {
     if (!file?.filename) return '';
 
-    const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
+    const baseUrl = this.getFileUrl(file, true);
+
+    // 절대 URL은 백엔드가 발급한 공개 CDN 주소다. 상대 URL은 인증이 필요한 백엔드 프록시다.
+    if (/^https?:\/\//i.test(file.url || '')) return baseUrl;
 
     if (!withAuth) return baseUrl;
 
     if (!token || !sessionId) return baseUrl;
 
     // URL 객체 생성 전 프로토콜 확인
-    const url = new URL(baseUrl);
+    const url = new URL(baseUrl, globalThis.location?.origin || 'http://localhost');
     url.searchParams.append('token', encodeURIComponent(token));
     url.searchParams.append('sessionId', encodeURIComponent(sessionId));
 

@@ -11,6 +11,7 @@ import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
+import com.ktb.chatapp.service.FileUrl;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -67,7 +68,7 @@ class MessageLoaderIntegrationTest {
         messageLoader = new MessageLoader(
                 messageRepository,
                 userRepository,
-                new MessageResponseMapper(fileRepository),
+                new MessageResponseMapper(fileRepository, new FileUrl("local", "")),
                 messageReadStatusService
         );
 

@@ -26,6 +26,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final FileService fileService;
     private final StoragePort storagePort;
+    private final FileUrl fileUrl;
 
     @Value("${app.profile.image.max-size:5242880}") // 5MB
     private long maxProfileImageSize;
@@ -41,7 +42,7 @@ public class UserService {
     public UserResponse getCurrentUserProfile(String email) {
         User user = userRepository.findByEmail(email.toLowerCase())
                 .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
-        return UserResponse.from(user);
+        return UserResponse.from(user, fileUrl);
     }
 
     /**
@@ -59,7 +60,7 @@ public class UserService {
         User updatedUser = userRepository.save(user);
         log.info("사용자 프로필 업데이트 완료 - ID: {}, Name: {}", user.getId(), request.getName());
 
-        return UserResponse.from(updatedUser);
+        return UserResponse.from(updatedUser, fileUrl);
     }
 
     /**
@@ -89,7 +90,7 @@ public class UserService {
 
         log.info("프로필 이미지 업로드 완료 - User ID: {}, Key: {}", user.getId(), profileImageKey);
 
-        return ProfileImageResponse.updated(profileImageKey);
+        return ProfileImageResponse.updated(profileImageKey, fileUrl);
     }
 
     /**
@@ -99,7 +100,7 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
 
-        return UserResponse.from(user);
+        return UserResponse.from(user, fileUrl);
     }
 
     /**

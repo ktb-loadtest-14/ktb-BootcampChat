@@ -13,6 +13,8 @@ import com.ktb.chatapp.model.Room;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.RoomParticipantPresenceService;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -38,10 +40,12 @@ public class RoomJoinHandler {
     private final MessageRepository messageRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
+    private final RoomParticipantPresenceService roomParticipantPresenceService;
     private final UserRooms userRooms;
     private final MessageLoader messageLoader;
     private final MessageResponseMapper messageResponseMapper;
     private final RoomLeaveHandler roomLeaveHandler;
+    private final FileUrl fileUrl;
     
     @OnEvent(JOIN_ROOM)
     public void handleJoinRoom(SocketIOClient client, String roomId) {
@@ -72,7 +76,7 @@ public class RoomJoinHandler {
                 return;
             }
 
-            roomRepository.addParticipant(roomId, userId);
+            roomParticipantPresenceService.addParticipant(roomId, userId);
 
             // Join socket room and add to user's room set
             client.joinRoom(roomId);
@@ -104,9 +108,9 @@ public class RoomJoinHandler {
 
             // 참가자 정보 조회
             List<UserResponse> participants = userRepository
-                    .findAllById(roomOpt.get().getParticipantIds())
+                    .findAllById(roomParticipantPresenceService.getParticipantIds(roomOpt.get()))
                     .stream()
-                    .map(UserResponse::from)
+                    .map(user -> UserResponse.from(user, fileUrl))
                     .toList();
             
             JoinRoomSuccessResponse response = JoinRoomSuccessResponse.builder()

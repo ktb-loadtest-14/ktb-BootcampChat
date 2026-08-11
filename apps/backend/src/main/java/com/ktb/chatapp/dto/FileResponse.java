@@ -2,6 +2,7 @@ package com.ktb.chatapp.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ktb.chatapp.model.File;
+import com.ktb.chatapp.service.FileUrl;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,9 +23,10 @@ public class FileResponse {
     private long size;
     private String user;
     private LocalDateTime uploadDate;
+    private String url;
 
     // File 엔티티에서 FileResponse로 변환하는 정적 메서드
-    public static FileResponse from(File file) {
+    public static FileResponse from(File file, FileUrl fileUrl) {
         return FileResponse.builder()
                 .id(file.getId())
                 .filename(file.getFilename())
@@ -33,6 +35,7 @@ public class FileResponse {
                 .size(file.getSize())
                 .user(file.getUser())
                 .uploadDate(file.getUploadDate())
+                .url(fileUrl.of(file.getPath()))
                 .build();
     }
 }

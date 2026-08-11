@@ -12,6 +12,7 @@ import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -57,7 +58,8 @@ class RoomLeaveHandlerTest {
                 roomRepository,
                 userRepository,
                 userRooms,
-                messageResponseMapper);
+                messageResponseMapper,
+                new FileUrl("local", ""));
     }
 
     @Test
