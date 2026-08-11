@@ -1,12 +1,15 @@
 package com.ktb.chatapp.controller;
 
 import com.ktb.chatapp.dto.StandardResponse;
+import com.ktb.chatapp.dto.UploadUrlRequest;
+import com.ktb.chatapp.model.File;
 import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.FileAccess;
 import com.ktb.chatapp.service.FileAccessService;
 import com.ktb.chatapp.service.FileService;
 import com.ktb.chatapp.service.FileUploadResult;
+import com.ktb.chatapp.service.FileUploadPreparation;
 import com.ktb.chatapp.service.FileUrl;
 import com.ktb.chatapp.service.PreviewNotSupportedException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,6 +20,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
@@ -45,9 +49,64 @@ public class FileController {
     private final FileUrl fileUrl;
 
     /**
+     * S3 모드에서는 브라우저 직접 PUT용 URL을 발급한다. 로컬 모드에서는 directUpload=false를 내려 기존
+     * multipart 업로드 경로를 사용하게 한다.
+     */
+    @Operation(summary = "파일 업로드 URL 발급", description = "S3 PUT용 Presigned URL을 발급합니다.")
+    @PostMapping("/upload-url")
+    public ResponseEntity<?> createUploadUrl(
+            @Valid @RequestBody UploadUrlRequest request,
+            Principal principal) {
+        try {
+            User user = findUser(principal);
+            FileUploadPreparation preparation = fileService.prepareUpload(
+                    request.filename(), request.contentType(), request.size(), user.getId());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("directUpload", preparation.directUpload());
+            if (preparation.directUpload()) {
+                response.put("uploadUrl", preparation.presignedUpload().url().toString());
+                response.put("requiredHeaders", preparation.presignedUpload().requiredHeaders());
+                response.put("expiresAt", preparation.presignedUpload().expiresAt());
+                response.put("file", fileData(preparation.file()));
+            }
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(StandardResponse.error(e.getMessage()));
+        } catch (UsernameNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(StandardResponse.error("사용자를 찾을 수 없습니다."));
+        } catch (Exception e) {
+            log.error("파일 업로드 URL 발급 중 에러 발생", e);
+            return ResponseEntity.internalServerError()
+                    .body(StandardResponse.error("파일 업로드 URL 발급 중 오류가 발생했습니다."));
+        }
+    }
+
+    /** S3 PUT이 성공한 뒤 pending 메타데이터를 채팅에 첨부 가능한 상태로 전환한다. */
+    @Operation(summary = "파일 업로드 완료", description = "직접 업로드가 끝난 파일을 사용 가능한 상태로 확정합니다.")
+    @PostMapping("/uploads/{id}/complete")
+    public ResponseEntity<?> completeUpload(@PathVariable String id, Principal principal) {
+        try {
+            User user = findUser(principal);
+            FileUploadResult result = fileService.completeUpload(id, user.getId());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "파일 업로드 성공");
+            response.put("file", fileData(result.getFile()));
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("파일 업로드 완료 처리 중 에러 발생: {}", id, e);
+            return handleFileError(e);
+        }
+    }
+
+    /**
      * 파일 업로드
      */
-    @Operation(summary = "파일 업로드", description = "파일을 업로드합니다. 최대 50MB까지 가능합니다.")
+    @Operation(summary = "파일 업로드", description = "로컬 저장 모드에서 파일을 업로드합니다. 최대 5MB까지 가능합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "파일 업로드 성공"),
         @ApiResponse(responseCode = "400", description = "잘못된 파일",
@@ -64,8 +123,7 @@ public class FileController {
             @Parameter(description = "업로드할 파일") @RequestParam("file") MultipartFile file,
             Principal principal) {
         try {
-            User user = userRepository.findByEmail(principal.getName())
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + principal.getName()));
+            User user = findUser(principal);
 
             FileUploadResult result = fileService.uploadFile(file, user.getId());
 
@@ -74,16 +132,7 @@ public class FileController {
                 response.put("success", true);
                 response.put("message", "파일 업로드 성공");
                 
-                Map<String, Object> fileData = new HashMap<>();
-                fileData.put("_id", result.getFile().getId());
-                fileData.put("filename", result.getFile().getFilename());
-                fileData.put("originalname", result.getFile().getOriginalname());
-                fileData.put("mimetype", result.getFile().getMimetype());
-                fileData.put("size", result.getFile().getSize());
-                fileData.put("uploadDate", result.getFile().getUploadDate());
-                fileData.put("url", fileUrl.of(result.getFile().getPath()));
-                
-                response.put("file", fileData);
+                response.put("file", fileData(result.getFile()));
 
                 return ResponseEntity.ok(response);
             } else {
@@ -101,6 +150,24 @@ public class FileController {
             errorResponse.put("error", e.getMessage());
             return ResponseEntity.status(500).body(errorResponse);
         }
+    }
+
+    private User findUser(Principal principal) {
+        return userRepository.findByEmail(principal.getName())
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found: " + principal.getName()));
+    }
+
+    private Map<String, Object> fileData(File file) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("_id", file.getId());
+        data.put("filename", file.getFilename());
+        data.put("originalname", file.getOriginalname());
+        data.put("mimetype", file.getMimetype());
+        data.put("size", file.getSize());
+        data.put("uploadDate", file.getUploadDate());
+        data.put("url", fileUrl.of(file.getPath()));
+        return data;
     }
 
     /**

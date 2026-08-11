@@ -4,9 +4,12 @@ import com.ktb.chatapp.model.File;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.storage.StorageKey;
 import com.ktb.chatapp.storage.StoragePort;
+import com.ktb.chatapp.storage.PresignedUpload;
 import com.ktb.chatapp.util.FileUtil;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -27,6 +30,11 @@ public class LocalFileService implements FileService {
     @Override
     public FileUploadResult uploadFile(MultipartFile file, String uploaderId) {
         try {
+            if (storagePort.requiresDirectUpload()) {
+                throw new IllegalStateException(
+                        "S3 저장 모드에서는 presigned URL 직접 업로드만 허용됩니다.");
+            }
+
             // 파일 보안 검증
             FileUtil.validateFile(file);
 
@@ -56,6 +64,7 @@ public class LocalFileService implements FileService {
                     .path(key)
                     .user(uploaderId)
                     .uploadDate(LocalDateTime.now())
+                    .uploadCompleted(true)
                     .build();
 
             File savedFile = fileRepository.save(fileEntity);
@@ -69,6 +78,56 @@ public class LocalFileService implements FileService {
             log.error("파일 업로드 처리 실패: {}", e.getMessage(), e);
             throw new RuntimeException("파일 업로드에 실패했습니다: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public FileUploadPreparation prepareUpload(
+            String originalFilename,
+            String contentType,
+            long size,
+            String uploaderId) {
+        FileUtil.validateFileMetadata(originalFilename, contentType, size);
+
+        String cleanedOriginalFilename = StringUtils.cleanPath(originalFilename);
+        String safeFileName = FileUtil.generateSafeFileName(cleanedOriginalFilename);
+        String key = StorageKey.chat(safeFileName);
+        Optional<PresignedUpload> presignedUpload = storagePort.presignPut(key, contentType, size);
+
+        if (presignedUpload.isEmpty()) {
+            return FileUploadPreparation.proxyUpload();
+        }
+
+        var upload = presignedUpload.get();
+        File pendingFile = File.builder()
+                .filename(safeFileName)
+                .originalname(FileUtil.normalizeOriginalFilename(cleanedOriginalFilename))
+                .mimetype(contentType)
+                .size(size)
+                .path(key)
+                .user(uploaderId)
+                .uploadDate(LocalDateTime.now())
+                .uploadCompleted(false)
+                .uploadExpiresAt(upload.expiresAt().plus(Duration.ofMinutes(15)))
+                .build();
+
+        return FileUploadPreparation.direct(fileRepository.save(pendingFile), upload);
+    }
+
+    @Override
+    public FileUploadResult completeUpload(String fileId, String uploaderId) {
+        File file = fileRepository.findById(fileId)
+                .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다."));
+        if (!file.getUser().equals(uploaderId)) {
+            throw new RuntimeException("파일 업로드를 완료할 권한이 없습니다.");
+        }
+
+        if (!file.isUploadReady()) {
+            file.setUploadCompleted(true);
+            file.setUploadExpiresAt(null);
+            file = fileRepository.save(file);
+        }
+
+        return FileUploadResult.builder().success(true).file(file).build();
     }
 
     @Override
