@@ -2,6 +2,7 @@ package com.ktb.chatapp.service;
 
 import com.ktb.chatapp.model.Session;
 import com.ktb.chatapp.service.session.SessionStore;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class SessionService {
     private final SessionStore sessionStore;
     public static final long SESSION_TTL_SEC = DurationStyle.detectAndParse(SESSION_TTL).getSeconds();
     private static final long SESSION_TIMEOUT = SESSION_TTL_SEC * 1000;
+    static final long SESSION_TOUCH_INTERVAL = Duration.ofMinutes(1).toMillis();
 
     private String generateSessionId() {
         return UUID.randomUUID().toString().replace("-", "");
@@ -68,9 +70,13 @@ public class SessionService {
     }
 
     public SessionValidationResult validateSession(String userId, String sessionId) {
+        return validateAndRefreshSession(userId, sessionId);
+    }
+
+    public SessionValidationResult validateAndRefreshSession(String userId, String sessionId) {
         try {
             if (userId == null || sessionId == null) {
-                log.warn("validateSession called with null parameters: userId={}, sessionId={}", userId, sessionId);
+                log.warn("validateAndRefreshSession called with null parameters: userId={}, sessionId={}", userId, sessionId);
                 return SessionValidationResult.invalid("INVALID_PARAMETERS", "유효하지 않은 세션 파라미터");
             }
 
@@ -94,10 +100,14 @@ public class SessionService {
                 return SessionValidationResult.invalid("SESSION_EXPIRED", "세션이 만료되었습니다.");
             }
 
-            // Update last activity
-            session.setLastActivity(now);
-            session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
-            session = sessionStore.save(session);
+            // 인증된 요청마다 MongoDB를 save하지 않고, 1분에 한 번만
+            // 세션 ID 조건으로 활동 시각을 원자적으로 앞당긴다.
+            if (now - session.getLastActivity() >= SESSION_TOUCH_INTERVAL) {
+                Instant nextExpiresAt = Instant.ofEpochMilli(now).plusSeconds(SESSION_TTL_SEC);
+                sessionStore.touch(userId, sessionId, now, nextExpiresAt);
+                session.setLastActivity(now);
+                session.setExpiresAt(nextExpiresAt);
+            }
 
             SessionData sessionData = toSessionData(session);
             return SessionValidationResult.valid(sessionData);
@@ -121,9 +131,11 @@ public class SessionService {
                 return;
             }
 
-            session.setLastActivity(Instant.now().toEpochMilli());
-            session.setExpiresAt(Instant.now().plusSeconds(SESSION_TTL_SEC));
-            sessionStore.save(session);
+            long now = Instant.now().toEpochMilli();
+            if (now - session.getLastActivity() >= SESSION_TOUCH_INTERVAL) {
+                Instant nextExpiresAt = Instant.ofEpochMilli(now).plusSeconds(SESSION_TTL_SEC);
+                sessionStore.touch(userId, session.getSessionId(), now, nextExpiresAt);
+            }
             
         } catch (Exception e) {
             log.error("Failed to update session activity for user: {}", userId, e);

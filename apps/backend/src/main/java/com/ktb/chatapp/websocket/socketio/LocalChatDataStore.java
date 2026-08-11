@@ -1,6 +1,8 @@
 package com.ktb.chatapp.websocket.socketio;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -34,9 +36,46 @@ public class LocalChatDataStore implements ChatDataStore {
     public void delete(String key) {
         storage.remove(key);
     }
+
+    @Override
+    public Set<String> getSet(String key) {
+        return copyStringSet(storage.get(key));
+    }
+
+    @Override
+    public void addToSet(String key, String value) {
+        storage.compute(key, (ignored, current) -> {
+            Set<String> values = new HashSet<>(copyStringSet(current));
+            values.add(value);
+            return Set.copyOf(values);
+        });
+    }
+
+    @Override
+    public void removeFromSet(String key, String value) {
+        storage.computeIfPresent(key, (ignored, current) -> {
+            Set<String> values = new HashSet<>(copyStringSet(current));
+            values.remove(value);
+            return values.isEmpty() ? null : Set.copyOf(values);
+        });
+    }
     
     @Override
     public int size() {
         return storage.size();
+    }
+
+    private Set<String> copyStringSet(Object value) {
+        if (!(value instanceof Set<?> values)) {
+            return Set.of();
+        }
+
+        Set<String> copy = new HashSet<>();
+        for (Object item : values) {
+            if (item instanceof String stringValue) {
+                copy.add(stringValue);
+            }
+        }
+        return Set.copyOf(copy);
     }
 }

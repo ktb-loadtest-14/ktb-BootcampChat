@@ -7,6 +7,11 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.mongodb.core.BulkOperations;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,6 +23,7 @@ import org.springframework.stereotype.Service;
 public class MessageReadStatusService {
 
     private final MessageRepository messageRepository;
+    private final MongoTemplate mongoTemplate;
 
     /**
      * 메시지 읽음 상태 업데이트
@@ -36,25 +42,37 @@ public class MessageReadStatusService {
                 .build();
 
         try {
+            BulkOperations bulkOperations = mongoTemplate.bulkOps(
+                    BulkOperations.BulkMode.UNORDERED,
+                    Message.class
+            );
+
             for (String messageId : messageIds) {
-                var messageOptional = messageRepository.findById(messageId);
-                if (messageOptional.isPresent()) {
-                    var message = messageOptional.get();
-                    if (message.getReaders() == null) {
-                        message.setReaders(new ArrayList<>());
-                    }
-                    boolean alreadyRead = message.getReaders().stream()
-                            .anyMatch(r -> r.getUserId().equals(userId));
-                    if (!alreadyRead) {
-                        message.getReaders().add(readerInfo);
-                    }
-                    messageRepository.save(message);
-                }
+                Query query = Query.query(
+                        Criteria.where("_id").is(messageId)
+                                .and("readers.userId").ne(userId)
+                );
+
+                Update update = new Update()
+                        .addToSet("readers", readerInfo);
+
+                bulkOperations.updateOne(query, update);
             }
-            log.debug("Read status updated for {} messages by user {}",
-                    messageIds.size(), userId);
+
+            bulkOperations.execute();
+
+            log.debug(
+                    "Read status updated for {} messages by user {}",
+                    messageIds.size(),
+                    userId
+            );
+
         } catch (Exception e) {
-            log.error("Read status update error for user {}", userId, e);
+            log.error(
+                    "Read status update error for user {}",
+                    userId,
+                    e
+            );
         }
     }
 }

@@ -23,8 +23,8 @@ const Login = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [serverStatus, setServerStatus] = useState({
-    checking: typeof window !== 'undefined', // 클라이언트에서만 체크
-    connected: false
+    checking: false,
+    connected: true
   });
   // 서버 생존 확인 결과는 로그인 시도 결과와 섞지 않는다.
   // 한 요소로 합치면 연결 경고가 로그인 실패로 오인된다.
@@ -38,6 +38,8 @@ const Login = () => {
     if (typeof window === 'undefined') {
       return;
     }
+
+    setServerStatus((prev) => ({ ...prev, checking: true }));
 
     const checkServerConnection = async () => {
       try {
@@ -57,19 +59,10 @@ const Login = () => {
       }
     };
 
-    // 약간의 지연을 두어 hydration 완료 후 실행
-    const timer = setTimeout(() => {
-      checkServerConnection();
-    }, 100);
-
-    // fallback으로 4초 후에는 무조건 체크 완료로 처리 (authService timeout 3초 + 여유시간)
-    const fallbackTimer = setTimeout(() => {
-      setServerStatus(prev => prev.checking ? { checking: false, connected: true } : prev);
-    }, 4000);
+    void checkServerConnection();
 
     return () => {
-      clearTimeout(timer);
-      clearTimeout(fallbackTimer);
+      setServerStatus((prev) => ({ ...prev, checking: false }));
     };
   }, []);
 
@@ -80,12 +73,6 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // 서버 연결 상태 확인 — 로그인을 시도조차 못 한 것이므로 서버 안내로 알린다.
-    if (!serverStatus.connected) {
-      setServerNotice('서버와 연결할 수 없습니다. 인터넷 연결을 확인하고 잠시 후 다시 시도해주세요.');
-      return;
-    }
 
     // 폼 유효성 검사
     if (!validateForm()) {
@@ -116,29 +103,6 @@ const Login = () => {
     }
   };
 
-  if (serverStatus.checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-[var(--vapor-space-300)] bg-[var(--vapor-color-background)]">
-        <VStack
-          $css={{
-            gap: '$250',
-            width: '400px',
-            padding: '$300',
-            borderRadius: '$300',
-            border: '1px solid var(--vapor-color-border-normal)',
-          }}
-        >
-          <div className="text-center mb-[2rem]">
-            <img src="images/logo-h.png" className="w-1/2 mx-auto" alt="KTB Chat 로고" />
-          </div>
-          <div className="text-center">
-            <Text typography="body1">서버 연결 확인 중...</Text>
-          </div>
-        </VStack>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center p-(--vapor-space-300) bg-(--vapor-color-background)">
       <VStack
@@ -162,6 +126,12 @@ const Login = () => {
             </Callout.Icon>
             {serverNotice}
           </Callout.Root>
+        )}
+
+        {serverStatus.checking && !serverNotice && (
+          <Text typography="body2" style={{ textAlign: 'center' }}>
+            서버 연결 상태를 확인하고 있습니다.
+          </Text>
         )}
 
         {error && (
@@ -224,7 +194,7 @@ const Login = () => {
           <Button
             type="submit"
             size="lg"
-            disabled={loading || !serverStatus.connected}
+            disabled={loading}
             data-testid="login-submit-button"
           >
             {loading ? '로그인 중...' : '로그인'}
@@ -238,7 +208,7 @@ const Login = () => {
             size="sm"
             variant="ghost"
             onClick={() => router.push('/register')}
-            disabled={loading || !serverStatus.connected}
+            disabled={loading}
           >
             회원가입
           </Button>

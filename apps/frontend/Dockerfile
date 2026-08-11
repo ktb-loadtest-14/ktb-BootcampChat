@@ -13,7 +13,6 @@ COPY apps/frontend/package.json apps/frontend/package.json
 
 RUN pnpm --dir apps/frontend install --frozen-lockfile
 
-COPY apps/frontend/.env* apps/frontend/
 COPY apps/frontend/jsconfig.json apps/frontend/next.config.js apps/frontend/postcss.config.js apps/frontend/tailwind.config.js apps/frontend/
 COPY apps/frontend/app apps/frontend/app
 COPY apps/frontend/components apps/frontend/components
@@ -26,6 +25,12 @@ COPY apps/frontend/public apps/frontend/public
 COPY apps/frontend/services apps/frontend/services
 COPY apps/frontend/styles apps/frontend/styles
 COPY apps/frontend/utils apps/frontend/utils
+
+# NEXT_PUBLIC_* 값은 브라우저 코드에 포함되므로 이미지 빌드 시점에 주입한다.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
 
 RUN pnpm --dir apps/frontend build
 

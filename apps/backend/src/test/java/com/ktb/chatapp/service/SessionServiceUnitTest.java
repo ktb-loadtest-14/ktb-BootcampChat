@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -121,6 +122,67 @@ class SessionServiceUnitTest {
 
         assertThat(result.isValid()).isFalse();
         assertThat(result.getError()).isEqualTo("VALIDATION_ERROR");
+    }
+
+    @Test
+    @DisplayName("세션 검증은 갱신 주기가 지난 경우에만 원자적 touch를 한다")
+    void validateAndRefreshSession_TouchesOnlyAfterRefreshInterval() {
+        long initialLastActivity = Instant.now()
+                .minusMillis(SessionService.SESSION_TOUCH_INTERVAL + 1)
+                .toEpochMilli();
+        Session session = Session.builder()
+                .userId(USER_ID)
+                .sessionId(SESSION_ID)
+                .createdAt(initialLastActivity)
+                .lastActivity(initialLastActivity)
+                .expiresAt(Instant.now().plusSeconds(30))
+                .build();
+        when(sessionStore.findByUserId(USER_ID)).thenReturn(Optional.of(session));
+
+        SessionValidationResult result = sessionService.validateAndRefreshSession(USER_ID, SESSION_ID);
+
+        assertThat(result.isValid()).isTrue();
+        assertThat(result.getSession().getLastActivity()).isGreaterThan(initialLastActivity);
+        verify(sessionStore).findByUserId(USER_ID);
+        verify(sessionStore).touch(anyString(), anyString(), anyLong(), any(Instant.class));
+        verify(sessionStore, never()).save(any(Session.class));
+    }
+
+    @Test
+    @DisplayName("최근에 갱신된 세션은 MongoDB에 다시 쓰지 않는다")
+    void validateAndRefreshSession_SkipsTouchWithinRefreshInterval() {
+        long recentActivity = Instant.now().minusSeconds(1).toEpochMilli();
+        Session session = Session.builder()
+                .userId(USER_ID)
+                .sessionId(SESSION_ID)
+                .createdAt(recentActivity)
+                .lastActivity(recentActivity)
+                .expiresAt(Instant.now().plusSeconds(SessionService.SESSION_TTL_SEC))
+                .build();
+        when(sessionStore.findByUserId(USER_ID)).thenReturn(Optional.of(session));
+
+        SessionValidationResult result = sessionService.validateAndRefreshSession(USER_ID, SESSION_ID);
+
+        assertThat(result.isValid()).isTrue();
+        verify(sessionStore, never()).touch(anyString(), anyString(), anyLong(), any(Instant.class));
+        verify(sessionStore, never()).save(any(Session.class));
+    }
+
+    @Test
+    @DisplayName("채팅 활동 갱신도 최근 touch 주기 안에서는 쓰기를 생략한다")
+    void updateLastActivity_SkipsTouchWithinRefreshInterval() {
+        long recentActivity = Instant.now().minusSeconds(1).toEpochMilli();
+        Session session = Session.builder()
+                .userId(USER_ID)
+                .sessionId(SESSION_ID)
+                .lastActivity(recentActivity)
+                .expiresAt(Instant.now().plusSeconds(SessionService.SESSION_TTL_SEC))
+                .build();
+        when(sessionStore.findByUserId(USER_ID)).thenReturn(Optional.of(session));
+
+        sessionService.updateLastActivity(USER_ID);
+
+        verify(sessionStore, never()).touch(anyString(), anyString(), anyLong(), any(Instant.class));
     }
 
     @Test

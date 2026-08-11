@@ -11,7 +11,8 @@ const RoomsTable = ({ rooms, connectionStatus, onJoinRoom }) => {
     <div
       className="chat-rooms-table"
       style={{
-        height: '430px',
+        width: '100%',
+        height: '100%',
         overflowY: 'auto',
         position: 'relative',
         borderRadius: '0.5rem',
@@ -47,7 +48,13 @@ const RoomsTable = ({ rooms, connectionStatus, onJoinRoom }) => {
                 <VStack $css={{ gap: '$050', alignItems: 'flex-start' }}>
                   <Text style={{ fontWeight: 500 }}>{room.name}</Text>
                   {room.hasPassword && (
-                    <HStack $css={{ gap: '$050', alignItems: 'center', color: '$warning-100' }}>
+                    <HStack
+                      $css={{
+                        gap: '$050',
+                        alignItems: 'center',
+                        color: '$warning-100',
+                      }}
+                    >
                       <LockIcon size={16} />
                       <Text typography="body3" foreground="warning-100">
                         비밀번호 필요
@@ -59,7 +66,9 @@ const RoomsTable = ({ rooms, connectionStatus, onJoinRoom }) => {
               <Table.Cell>
                 <HStack $css={{ gap: '$050', alignItems: 'center' }}>
                   <GroupIcon />
-                  <Text typography="body2">{room.participants?.length || 0}</Text>
+                  <Text typography="body2">
+                    {room.participants?.length || 0}
+                  </Text>
                 </HStack>
               </Table.Cell>
               <Table.Cell>

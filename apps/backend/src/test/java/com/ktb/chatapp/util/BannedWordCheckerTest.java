@@ -54,4 +54,19 @@ class BannedWordCheckerTest {
         assertFalse(checker.containsBannedWord(null));
         assertFalse(checker.containsBannedWord("   "));
     }
+
+    @Test
+    void containsBannedWord_isCaseInsensitive() {
+        BannedWordChecker checker = new BannedWordChecker(Set.of("BaDWord"));
+
+        assertTrue(checker.containsBannedWord("prefix-BADWORD-suffix"));
+    }
+
+    @Test
+    void containsBannedWord_detectsKoreanAndOverlappingWords() {
+        BannedWordChecker checker = new BannedWordChecker(Set.of("금칙", "금칙어"));
+
+        assertTrue(checker.containsBannedWord("이 문장에는 금칙어가 있습니다"));
+        assertFalse(checker.containsBannedWord("이 문장은 안전합니다"));
+    }
 }
