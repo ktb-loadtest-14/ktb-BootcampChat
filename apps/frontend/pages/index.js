@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/router';
 import { ErrorCircleIcon } from '@vapor-ui/icons';
 import { withoutAuth, useAuth } from '@/contexts/AuthContext';
@@ -14,7 +14,18 @@ import {
     VStack,
 } from '@vapor-ui/core';
 
+const subscribeToHydration = () => () => {};
+const getClientHydrationSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
+
+const useIsHydrated = () => useSyncExternalStore(
+  subscribeToHydration,
+  getClientHydrationSnapshot,
+  getServerHydrationSnapshot
+);
+
 const Login = () => {
+  const isHydrated = useIsHydrated();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -23,6 +34,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
+
+  const interactionDisabled = !isHydrated || loading;
 
   const validateForm = () => {
     // 유효성 검사는 HTML5 폼 검증에 맡김
@@ -62,7 +75,12 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-(--vapor-space-300) bg-(--vapor-color-background)">
+    <div
+      className="min-h-screen flex items-center justify-center p-(--vapor-space-300) bg-(--vapor-color-background)"
+      data-testid="login-page"
+      data-hydrated={isHydrated ? 'true' : 'false'}
+      aria-busy={interactionDisabled}
+    >
       <VStack
         $css={{
           gap: '$250',
@@ -107,7 +125,7 @@ const Login = () => {
                   size="lg"
                   type="email"
                   required
-                  disabled={loading}
+                  disabled={interactionDisabled}
                   value={formData.email}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, email: value }))}
                   placeholder="이메일을 입력하세요"
@@ -130,7 +148,7 @@ const Login = () => {
                   size="lg"
                   type="password"
                   required
-                  disabled={loading}
+                  disabled={interactionDisabled}
                   value={formData.password}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, password: value }))}
                   placeholder="비밀번호를 입력하세요"
@@ -144,7 +162,7 @@ const Login = () => {
           <Button
             type="submit"
             size="lg"
-            disabled={loading}
+            disabled={interactionDisabled}
             data-testid="login-submit-button"
           >
             {loading ? '로그인 중...' : '로그인'}
@@ -158,7 +176,7 @@ const Login = () => {
             size="sm"
             variant="ghost"
             onClick={() => router.push('/register')}
-            disabled={loading}
+            disabled={interactionDisabled}
           >
             회원가입
           </Button>
