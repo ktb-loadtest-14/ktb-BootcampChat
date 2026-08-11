@@ -59,6 +59,8 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
       // S3 모드에서는 Presigned URL로 직접 PUT하고, 로컬 모드에서는 기존 API로 업로드한다.
       const data = await fileService.uploadProfileImage(file);
 
+      await(Toast.success('프로필 이미지가 변경되었습니다.'));
+
       if (!data?.imageUrl) {
         throw new Error(data?.message || '이미지 업로드에 실패했습니다.');
       }
@@ -70,8 +72,6 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
       saveStoredUser(updatedUser);
 
       onImageChange(data.imageUrl);
-
-      Toast.success('프로필 이미지가 변경되었습니다.');
 
       window.dispatchEvent(new Event('userProfileUpdate'));
 
