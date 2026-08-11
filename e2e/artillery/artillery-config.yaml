@@ -11,7 +11,9 @@ config:
         headless: true
         slowMo: 100
       contextOptions:
-        viewport: null
+        viewport:
+          width: 1280
+          height: 720
 
 scenarios:
   - engine: playwright
