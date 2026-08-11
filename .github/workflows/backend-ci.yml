@@ -1,6 +1,8 @@
 name: Backend CI
 
 on:
+  # GitHub Actions의 Run workflow 버튼으로 검증과 이미지 발행을 수동 실행한다.
+  workflow_dispatch:
   # test 또는 main 대상 PR에서 백엔드 변경이 있을 때만 빌드와 테스트를 수행한다.
   pull_request:
     branches:
@@ -53,7 +55,7 @@ jobs:
   publish-image:
     # PR에서는 실행하지 않고 test/main 브랜치 push에서만 이미지를 업로드한다.
     name: Build and push image
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     permissions:
