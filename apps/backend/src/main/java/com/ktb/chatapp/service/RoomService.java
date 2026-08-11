@@ -22,6 +22,9 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -39,48 +42,61 @@ public class RoomService {
 
     public RoomsResponse getAllRooms(String name) {
         try {
-            List<Room> rooms = roomRepository.findAll();
-            // 목록 조회는 이미 MongoDB에서 읽은 participantIds 스냅샷을 재사용한다.
-            // 방마다 Redis를 조회하면 빈 방이 cache miss로 남아 요청 수가 방 개수에 비례해 폭증한다.
-            Map<String, Set<String>> participantIdsByRoom = loadParticipantSnapshots(rooms);
-            Map<String, User> usersById = loadUsersById(rooms, participantIdsByRoom);
-            Map<String, Integer> recentMessageCounts = loadRecentMessageCounts(rooms);
+            int pageSize = 20;
+
+            // MongoDB에서 최신 방 20개만 조회
+            Pageable pageable = PageRequest.of(
+                    0,
+                    pageSize,
+                    Sort.by(Sort.Direction.DESC, "createdAt")
+            );
+
+            List<Room> rooms = roomRepository.findAll(pageable).getContent();
+
+            // 목록 조회는 MongoDB에서 읽은 participantIds 스냅샷을 재사용한다.
+            Map<String, Set<String>> participantIdsByRoom =
+                    loadParticipantSnapshots(rooms);
+
+            Map<String, User> usersById =
+                    loadUsersById(rooms, participantIdsByRoom);
+
+            Map<String, Integer> recentMessageCounts =
+                    loadRecentMessageCounts(rooms);
 
             // 방·사용자·최근 메시지 수를 각각 일괄 조회한 뒤 메모리에서 응답을 조립한다.
             List<RoomResponse> roomResponses = rooms.stream()
-                .map(room -> safeMapToRoomResponse(
-                        room,
-                        name,
-                        usersById,
-                        participantIdsByRoom.getOrDefault(room.getId(), Set.of()),
-                        recentMessageCounts.getOrDefault(room.getId(), 0)))
-                .flatMap(Optional::stream)
-                .sorted(Comparator.comparing(
-                    RoomResponse::getCreatedAtDateTime,
-                    Comparator.nullsLast(Comparator.reverseOrder())))
-                .collect(Collectors.toList());
+                    .map(room -> safeMapToRoomResponse(
+                            room,
+                            name,
+                            usersById,
+                            participantIdsByRoom.getOrDefault(room.getId(), Set.of()),
+                            recentMessageCounts.getOrDefault(room.getId(), 0)
+                    ))
+                    .flatMap(Optional::stream)
+                    .collect(Collectors.toList());
 
             PageMetadata metadata = PageMetadata.builder()
-                .total(roomResponses.size())
-                .page(0)
-                .pageSize(roomResponses.size())
-                .totalPages(1)
-                .hasMore(false)
-                .currentCount(roomResponses.size())
-                .build();
+                    .total(roomResponses.size())
+                    .page(0)
+                    .pageSize(pageSize)
+                    .totalPages(1)
+                    .hasMore(false)
+                    .currentCount(roomResponses.size())
+                    .build();
 
             return RoomsResponse.builder()
-                .success(true)
-                .data(roomResponses)
-                .metadata(metadata)
-                .build();
+                    .success(true)
+                    .data(roomResponses)
+                    .metadata(metadata)
+                    .build();
 
         } catch (Exception e) {
             log.error("방 목록 조회 에러", e);
+
             return RoomsResponse.builder()
-                .success(false)
-                .data(List.of())
-                .build();
+                    .success(false)
+                    .data(List.of())
+                    .build();
         }
     }
 
