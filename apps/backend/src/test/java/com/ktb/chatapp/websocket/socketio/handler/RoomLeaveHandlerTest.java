@@ -13,6 +13,7 @@ import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.FileUrl;
+import com.ktb.chatapp.service.RoomParticipantPresenceService;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -43,6 +44,7 @@ class RoomLeaveHandlerTest {
     @Mock private MessageRepository messageRepository;
     @Mock private RoomRepository roomRepository;
     @Mock private UserRepository userRepository;
+    @Mock private RoomParticipantPresenceService roomParticipantPresenceService;
     @Mock private UserRooms userRooms;
     @Mock private MessageResponseMapper messageResponseMapper;
     @Mock private SocketIOClient client;
@@ -57,6 +59,7 @@ class RoomLeaveHandlerTest {
                 messageRepository,
                 roomRepository,
                 userRepository,
+                roomParticipantPresenceService,
                 userRooms,
                 messageResponseMapper,
                 new FileUrl("local", ""));
@@ -101,6 +104,8 @@ class RoomLeaveHandlerTest {
         when(userRepository.findById("user-2")).thenReturn(Optional.of(remainingUser));
         when(roomRepository.findById("room-1"))
                 .thenReturn(Optional.of(roomBeforeLeave), Optional.of(roomAfterLeave));
+        when(roomParticipantPresenceService.getParticipantIds(roomAfterLeave))
+                .thenReturn(roomAfterLeave.getParticipantIds());
         when(messageRepository.save(any(Message.class))).thenAnswer(invocation -> {
             Message message = invocation.getArgument(0);
             message.setId("message-1");
@@ -113,7 +118,8 @@ class RoomLeaveHandlerTest {
 
         handler.handleLeaveRoom(client, "room-1");
 
-        verify(roomRepository).removeParticipant("room-1", "user-1");
+        verify(roomParticipantPresenceService).removeParticipant("room-1", "user-1");
+        verify(roomRepository, never()).removeParticipant(any(), any());
         verify(client).leaveRoom("room-1");
         verify(userRooms).remove("user-1", "room-1");
         verify(roomOperations).sendEvent(MESSAGE, leaveMessageResponse);
