@@ -1,14 +1,10 @@
 import React from 'react';
-import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { ThemeProvider } from '@vapor-ui/core';
 import '@vapor-ui/core/styles.css';
 import '../styles/globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
-
-const AuthenticatedPagesShell = dynamic(
-  () => import('@/components/AuthenticatedPagesShell')
-);
+import AuthenticatedPagesShell from '@/components/AuthenticatedPagesShell';
 
 const PUBLIC_PAGES = new Set(['/', '/register']);
 
